@@ -1,6 +1,9 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+#include "wolfssl/wolfcrypt/aes.h"
+#include "wolfssl/wolfcrypt/hash.h"
+
 void read_file(char *filename, char *buffer, int len) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
@@ -60,11 +63,17 @@ char* update_value(char *buffer, char *keyword) {
         pin = pin*10 + buffer[i] - '0';
         i++;
     }
-    // custom hash function
-    pin = test_hash(pin);
-    while(pin > 0) {
-        update_buffer[update_index++] = pin%10 + '0';
-        pin = pin/10;
+    // // custom hash function
+    // pin = test_hash(pin);
+    // while(pin > 0) {
+    //     update_buffer[update_index++] = pin%10 + '0';
+    //     pin = pin/10;
+    // }
+    // SHA256 hash
+    byte hash[SHA256_DIGEST_SIZE];
+    wc_Sha256Hash((byte*)&pin, sizeof(pin), hash);
+    for (int i = 0; i<SHA256_DIGEST_SIZE; i++) {
+        update_buffer[update_index++] = hash[i];
     }
     while (i<strlen(buffer)) {
         update_buffer[update_index++] = buffer[i];
