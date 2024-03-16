@@ -23,6 +23,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <time.h>
+#include<stdatomic.h> // to support atomic operations
 
 #include "board_link.h"
 #include "simple_flash.h"
@@ -75,6 +78,7 @@ typedef struct {
 // Data type for receiving a validate message
 typedef struct {
     uint32_t component_id;
+    uint8_t rand_no[16];
 } validate_message;
 
 // Data type for receiving a scan message
@@ -89,6 +93,11 @@ typedef struct {
     uint32_t component_ids[32];
 } flash_entry;
 
+//Data type for atomic counting semaphore
+typedef struct{
+    atomic_int count;
+}atomic_semaphore_t;
+
 // Datatype for commands sent to components
 typedef enum {
     COMPONENT_CMD_NONE,
@@ -102,12 +111,55 @@ typedef enum {
 // Variable for information stored in flash memory
 flash_entry flash_status;
 
+// to store Map in AP
+uint32_t hashed_random_number[COMPONENT_CNT];
+
 /********************************* REFERENCE FLAG **********************************/
 // trust me, it's easier to get the boot reference flag by
 // getting this running than to try to untangle this
 // NOTE: you're not allowed to do this in your code
 // Remove this in your design
 typedef uint32_t aErjfkdfru;const aErjfkdfru aseiFuengleR[]={0x1ffe4b6,0x3098ac,0x2f56101,0x11a38bb,0x485124,0x11644a7,0x3c74e8,0x3c74e8,0x2f56101,0x12614f7,0x1ffe4b6,0x11a38bb,0x1ffe4b6,0x12614f7,0x1ffe4b6,0x12220e3,0x3098ac,0x1ffe4b6,0x2ca498,0x11a38bb,0xe6d3b7,0x1ffe4b6,0x127bc,0x3098ac,0x11a38bb,0x1d073c6,0x51bd0,0x127bc,0x2e590b1,0x1cc7fb2,0x1d073c6,0xeac7cb,0x51bd0,0x2ba13d5,0x2b22bad,0x2179d2e,0};const aErjfkdfru djFIehjkklIH[]={0x138e798,0x2cdbb14,0x1f9f376,0x23bcfda,0x1d90544,0x1cad2d2,0x860e2c,0x860e2c,0x1f9f376,0x38ec6f2,0x138e798,0x23bcfda,0x138e798,0x38ec6f2,0x138e798,0x31dc9ea,0x2cdbb14,0x138e798,0x25cbe0c,0x23bcfda,0x199a72,0x138e798,0x11c82b4,0x2cdbb14,0x23bcfda,0x3225338,0x18d7fbc,0x11c82b4,0x35ff56,0x2b15630,0x3225338,0x8a977a,0x18d7fbc,0x29067fe,0x1ae6dee,0x4431c8,0};typedef int skerufjp;skerufjp siNfidpL(skerufjp verLKUDSfj){aErjfkdfru ubkerpYBd=12+1;skerufjp xUrenrkldxpxx=2253667944%0x432a1f32;aErjfkdfru UfejrlcpD=1361423303;verLKUDSfj=(verLKUDSfj+0x12345678)%60466176;while(xUrenrkldxpxx--!=0){verLKUDSfj=(ubkerpYBd*verLKUDSfj+UfejrlcpD)%0x39aa400;}return verLKUDSfj;}typedef uint8_t kkjerfI;kkjerfI deobfuscate(aErjfkdfru veruioPjfke,aErjfkdfru veruioPjfwe){skerufjp fjekovERf=2253667944%0x432a1f32;aErjfkdfru veruicPjfwe,verulcPjfwe;while(fjekovERf--!=0){veruioPjfwe=(veruioPjfwe-siNfidpL(veruioPjfke))%0x39aa400;veruioPjfke=(veruioPjfke-siNfidpL(veruioPjfwe))%60466176;}veruicPjfwe=(veruioPjfke+0x39aa400)%60466176;verulcPjfwe=(veruioPjfwe+60466176)%0x39aa400;return veruicPjfwe*60466176+verulcPjfwe-89;}
+
+/*******************************BREAK uint32_t in uint8_t ***********************************************/
+// output is 4 parts we break our input into
+void uint32_t_to_uint8_t(uint32_t input, uint8_t *output){
+    output[0] = (input >> 24) & 0xFF;
+    output[1] = (input >> 16) & 0xFF;
+    output[2] = (input >> 8) & 0xFF;
+    output[3] = input & 0xFF; // & 0xFF takes last 8 bits
+}
+
+/***************************** COMBINE 4 UINT8_T TO ONE UINT32_T *****************************************/
+uint32_t uint8_t_to_uint32_t(uint8_t *arr){
+    uint32_t result = 0;
+
+    result |= ((uint32_t)arr[0] << 24);
+    result |= ((uint32_t)arr[1] << 16);
+    result |= ((uint32_t)arr[2] << 8);
+    result |= arr[3];
+
+    return result;
+}
+/******************************* Atomic Counting Semaphore Functionality*********************************/
+
+// to initialize semaphore
+void atomic_semaphore_init(atomic_semaphore_t *sem){
+    atomic_init(&sem->count, 0); 
+}
+
+// to increment semaphore
+void atomic_semaphore_increment(atomic_semaphore_t *sem){
+    atomic_fetch_add(&sem->count, 1);
+}
+
+/******************************Temporary Random Number Generator**************************************/
+
+int random_number_generation(){
+    srand(time(NULL));
+    int temp = rand();
+    return temp;
+}
 
 /******************************* POST BOOT FUNCTIONALITY *********************************/
 /**
@@ -245,16 +297,55 @@ int validate_components() {
     // Buffers for board link communication
     uint8_t receive_buffer[MAX_I2C_MESSAGE_LEN];
     uint8_t transmit_buffer[MAX_I2C_MESSAGE_LEN];
-
+    uint8_t support_array[MAX_I2C_MESSAGE_LEN - 1]; //dummy array for encyption
     // Send validate command to each component
     for (unsigned i = 0; i < flash_status.component_cnt; i++) {
         // Set the I2C address of the component
         i2c_addr_t addr = component_id_to_i2c_addr(flash_status.component_ids[i]);
+        uint32_t puzzle = flash_status.component_ids[i]; // adding the component id
+        uint32_t random_number = random_number_generation(); //generating a random number for this component
+        puzzle += random_number; // adding the random number
+        uint8_t puzzle_split[4];
+
+        // generating key for encryption
+        uint32_t temp_key[4]; // as C_Key is array of 4 integers
+        temp_key = C_Key;
+        temp_key[3] = temp_key[3]^flash_status.component_ids[i]; // calculating XOR
+
+        uint8_t key[16];
+        for(int y = 0; y < 16; y += 4){ // converting key to array of uint8_t
+            uint32_t help = temp_key[y/4];
+            uint8_t help_array[4];
+            uint32_t_to_uint8_t(help, help_array);
+            key[y] = help_array[0];
+            key[y + 1] = help_array[1];
+            key[y + 2] = help_array[2];
+            key[y + 3] = help_array[3];
+        }
+
+        // encryption
+        uint32_t_to_uint8_t(puzzle, puzzle_split); // spliting puzzle in 4 parts
+        int temp = encrypt_sym(puzzle_split, BLOCK_SIZE, key, support_array); // encrypting and storing in transmit buffer
+        if(temp != 0){
+            print_error("Cound not encrypt\n");
+            return ERROR_RETURN;
+        }
+        
+        //hashing the random number
+        uint8_t input_split[16], output_split[16]; // temporary storage of 4 parts of random number
+        uint32_t_to_uint8_t(random_number, input_split);
+        temp = hash((void*)input_split, 16, output_split);
+        if(temp != 0){
+            print_error("Could not hash\n");
+            return ERROR_RETURN;
+        }// if error occured
+        //storing hashed random number
+        hashed_random_number[i] = uint8_t_to_uint32_t(output_split); // storing hashed random number to be used while booting components
 
         // Create command message
         command_message* command = (command_message*) transmit_buffer;
         command->opcode = COMPONENT_CMD_VALIDATE;
-        
+        command->params = support_array; // storing puzzle here
         // Send out command and receive result
         int len = issue_cmd(addr, transmit_buffer, receive_buffer);
         if (len == ERROR_RETURN) {
@@ -263,8 +354,19 @@ int validate_components() {
         }
 
         validate_message* validate = (validate_message*) receive_buffer;
+
+        //extracting the random number returned by the component
+        uint8_t temp_array[16], temp_array1[16]; // temp arrays to assist decryption
+        temp_array = validate->rand_no;
+
+        temp = decrypt_sym(temp_array, BLOCK_SIZE, key, temp_array1);
+        if(temp != 0){
+            return;
+        }
+
+        uint32_t rand_number = uint8_t_to_uint32_t(temp_array1);
         // Check that the result is correct
-        if (validate->component_id != flash_status.component_ids[i]) {
+        if (validate->component_id != flash_status.component_ids[i] || random_number != validate->rand_number) {
             print_error("Component ID: 0x%08x invalid\n", flash_status.component_ids[i]);
             return ERROR_RETURN;
         }
@@ -285,7 +387,9 @@ int boot_components() {
         // Create command message
         command_message* command = (command_message*) transmit_buffer;
         command->opcode = COMPONENT_CMD_BOOT;
-        
+        uint8_t temp_array[MAX_I2C_MESSAGE_LEN - 1];
+        uint32_t_to_uint8_t(hashed_random_number[i], temp_array);
+        command->params = temp_array;
         // Send out command and receive result
         int len = issue_cmd(addr, transmit_buffer, receive_buffer);
         if (len == ERROR_RETURN) {

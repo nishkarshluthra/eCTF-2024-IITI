@@ -46,6 +46,10 @@
 #define ATTESTATION_DATE "08/08/08"
 #define ATTESTATION_CUSTOMER "Fritz"
 */
+/******************************** FLASH DEFINATIONS *******************************/
+
+#define FLASH_ADDR ((MXC_FLASH_MEM_BASE + MXC_FLASH_MEM_SIZE) - (2 * MXC_FLASH_PAGE_SIZE))
+#define FLASH_MAGIC 0xDEADBEEF
 
 /******************************** TYPE DEFINITIONS ********************************/
 // Commands received by Component using 32 bit integer
@@ -66,12 +70,19 @@ typedef struct {
 
 typedef struct {
     uint32_t component_id;
+    uint8_t rand_no[16] // for validation rand_no
 } validate_message;
 
 typedef struct {
     uint32_t component_id;
 } scan_message;
 
+// struct for flash
+typedef struct{
+    uint32_t flash_magic;
+    uint8_t encrypted_key[16];
+    uint32_t rand_no;
+} flash_entry;
 /********************************* FUNCTION DECLARATIONS **********************************/
 // Core function definitions
 void component_process_cmd(void);
@@ -80,11 +91,32 @@ void process_scan(void);
 void process_validate(void);
 void process_attest(void);
 
+/*******************************BREAK uint32_t in uint8_t ***********************************************/
+// output is 4 parts we break our input into
+void uint32_t_to_uint8_t(uint32_t input, uint8_t *output){
+    output[0] = (input >> 24) & 0xFF;
+    output[1] = (input >> 16) & 0xFF;
+    output[2] = (input >> 8) & 0xFF;
+    output[3] = input & 0xFF; // & 0xFF takes last 8 bits
+}
+
+/***************************** COMBINE 4 UINT8_T TO ONE UINT32_T *****************************************/
+uint32_t uint8_t_to_uint32_t(uint8_t *arr){
+    uint32_t result = 0;
+
+    result |= ((uint32_t)arr[0] << 24);
+    result |= ((uint32_t)arr[1] << 16);
+    result |= ((uint32_t)arr[2] << 8);
+    result |= arr[3];
+
+    return result;
+}
+
 /********************************* GLOBAL VARIABLES **********************************/
 // Global varaibles
 uint8_t receive_buffer[MAX_I2C_MESSAGE_LEN];
 uint8_t transmit_buffer[MAX_I2C_MESSAGE_LEN];
-
+flash_entry flash_status;
 /******************************* POST BOOT FUNCTIONALITY *********************************/
 /**
  * @brief Secure Send 
@@ -176,6 +208,10 @@ void process_boot() {
     // respond with the boot message
     uint8_t len = strlen(COMPONENT_BOOT_MSG) + 1;
     memcpy((void*)transmit_buffer, COMPONENT_BOOT_MSG, len);
+    command_message* command = (command_message)* receive_buffer;
+    uint32_t received_hashed_rand_no = uint32_t_to_uint8_t(command->params);
+
+    //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! if condition to equate hashed_rand_no sent by AP and stored in flash
     send_packet_and_ack(len, transmit_buffer);
     // Call the boot function
     boot();
@@ -189,9 +225,44 @@ void process_scan() {
 }
 
 void process_validate() {
+    //Extract the puzzle 
+    uint8_t puzzle[MAX_I2C_MESSAGE_LEN - 1];
+    command_message* command = (command_message)* receive_buffer;
+    puzzle = command->params;
+
+    //Decrypting Puzzle
+    uint8_t temp_array[16];
+    int temp = decrypt_sym(puzzle, BLOCK_SIZE, key, temp_array);
+    if(temp != 0){
+        printf("ERROR DECRYPITING\n");
+        return;
+    }
+
+    uint32_t temp1 = uint8_t_to_uint32_t(temp_array);
+    uint32_t rand_no = temp1 - COMPONENT_ID;
+
+    uint8_t to_encrypt_and_hash[16], hashed_rand_no_temp[16];
+    uint32_t_to_uint8_t(rand_no, to_encrypt_and_hash);
+
+    //encrypting random number
+    int temp = encrypt_sym(to_encrypt_and_hash, BLOCK_SIZE, key, temp_array);
+    //again using temp array to to store encrypted rand no.
+
+    //hashing random number
+    temp = hash((void*)to_encrypt_and_hash, BLOCK_SIZE, hashed_rand_no_temp);
+    if(temp != 0){
+        printf("Error in hashing");
+        return;
+    }
+
+    uint32_t hashed_rand_number = uint8_t_to_uint32_t(hashed_rand_no_temp);
+    //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!STORE IT IN FLASH
+
     // The AP requested a validation. Respond with the Component ID
     validate_message* packet = (validate_message*) transmit_buffer;
     packet->component_id = COMPONENT_ID;
+    packet->rand_no = temp_array;// sending encrypted random number back
+
     send_packet_and_ack(sizeof(validate_message), transmit_buffer);
 }
 
