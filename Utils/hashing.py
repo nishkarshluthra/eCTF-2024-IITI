@@ -1,9 +1,6 @@
 import os
 import hashlib
 import argparse
-import asyncio
-import sys
-# from ectf_tools.utils import run_shell
 from Crypto.Cipher import AES
 
 def read_file(file_path):
@@ -70,7 +67,6 @@ def edit_component(file_path):
     component_id = int(component_id, 16)
     xor = component_id ^ int(aes_key, 16)
     final_key = hex(xor)
-    # final_key = final_key[2:]
     for i in range(len(data)):
         for param in params:
             if param in data[i]:
@@ -80,21 +76,20 @@ def edit_component(file_path):
                 new_data = ' '.join(new_data)
                 new_data = new_data.replace('\n', '')
                 words[index+1] = f'"{aes_encrypt(new_data, final_key)}"'
+                for j in range(len(words)):
+                    if j > index+1:
+                        words.pop()
                 data[i] = ' '.join(words)
                 data[i] += '\n'
-    file= open('write.txt', "w")
-    for i in data:
-        file.write(i)
-    file.write(file_path)
-    file.close()
     write_file(file_path, data)
-
-    # # testing 
+    # testing 
     # for i in range(len(data)):
     #     for param in params:
     #         if param in data[i]:
     #             words = data[i].split(' ')
     #             index = words.index(param)
+    #             words[index+1] = words[index+1].replace('\n', '')
+    #             words[index+1] = words[index+1][1:-1]
     #             print("Param: " + param + "Decrypt: " + aes_decrypt(words[index+1], final_key))
 
 def main():
