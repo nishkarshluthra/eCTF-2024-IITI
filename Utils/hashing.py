@@ -76,7 +76,10 @@ def edit_component(file_path):
             if param in data[i]:
                 words = data[i].split(' ')
                 index = words.index(param)
-                words[index+1] = f'"{aes_encrypt(words[index+1], final_key)}"'
+                new_data = words[index+1:]
+                new_data = ' '.join(new_data)
+                new_data = new_data.replace('\n', '')
+                words[index+1] = f'"{aes_encrypt(new_data, final_key)}"'
                 data[i] = ' '.join(words)
                 data[i] += '\n'
     file= open('write.txt', "w")
