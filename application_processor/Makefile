@@ -422,9 +422,7 @@ endif
 
 all:
 # 	Extend the functionality of the "all" recipe here
-	arm-none-eabi-gcc D:\IIT Indore Res\BTP\eCTF-2024-IITI\test\1.c -o D:\IIT Indore Res\BTP\eCTF-2024-IITI\test\1.elf
-	arm-none-eabi-objcopy -O binary D:\IIT Indore Res\BTP\eCTF-2024-IITI\test\1.elf D:\IIT Indore Res\BTP\eCTF-2024-IITI\test\1.bin
-	D:\IIT Indore Res\BTP\eCTF-2024-IITI\test\1.bin
+	python3 ../Utils/hashing.py ap ./inc/ectf_params.h
 	arm-none-eabi-size --format=berkeley $(BUILD_DIR)/$(PROJECT).elf
 
 libclean: 

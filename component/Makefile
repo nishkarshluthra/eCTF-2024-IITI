@@ -425,6 +425,7 @@ endif
 
 all:
 # 	Extend the functionality of the "all" recipe here
+	ectf_hashing component ./inc/ectf_params.h
 	arm-none-eabi-size --format=berkeley $(BUILD_DIR)/$(PROJECT).elf
 
 libclean: 
