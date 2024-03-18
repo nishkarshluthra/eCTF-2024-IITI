@@ -1,6 +1,9 @@
 import os
 import hashlib
 import argparse
+import asyncio
+import sys
+# from ectf_tools.utils import run_shell
 from Crypto.Cipher import AES
 
 def read_file(file_path):
@@ -39,10 +42,12 @@ def edit_ap(file_path):
                 words = data[i].split(' ')
                 index = words.index(param)
                 words[index+1] = words[index+1].replace('\n', '')
-                words[index+1] = sha256hash(words[index+1])
+                words[index+1] = f'"{sha256hash(words[index+1])}"'
                 data[i] = ' '.join(words)
                 data[i] += '\n'
     write_file(file_path, data)
+    # asyncio.run(run_shell(f'python3 ../Utils/write_file.py {file_path} {data}'))
+    # print(data)
 
 def edit_component(file_path):
     if not os.path.exists(file_path):
@@ -71,9 +76,14 @@ def edit_component(file_path):
             if param in data[i]:
                 words = data[i].split(' ')
                 index = words.index(param)
-                words[index+1] = aes_encrypt(words[index+1], final_key)
+                words[index+1] = f'"{aes_encrypt(words[index+1], final_key)}"'
                 data[i] = ' '.join(words)
                 data[i] += '\n'
+    file= open('write.txt', "w")
+    for i in data:
+        file.write(i)
+    file.write(file_path)
+    file.close()
     write_file(file_path, data)
 
     # # testing 
@@ -84,13 +94,25 @@ def edit_component(file_path):
     #             index = words.index(param)
     #             print("Param: " + param + "Decrypt: " + aes_decrypt(words[index+1], final_key))
 
+def main():
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument('component', type=str, help='Component name')
+    argparser.add_argument('file_path', type=str, help='File path')
+    args = argparser.parse_args()
 
-argparser = argparse.ArgumentParser()
-argparser.add_argument('component', type=str, help='Component name')
-argparser.add_argument('file_path', type=str, help='File path')
-args = argparser.parse_args()
+    if args.component == 'ap':
+        edit_ap(args.file_path)
+    elif args.component == 'component':
+        edit_component(args.file_path)
 
-if args.component == 'ap':
-    edit_ap(args.file_path)
-elif args.component == 'component':
-    edit_component(args.file_path)
+if __name__ == '__main__':
+    main()
+# argparser = argparse.ArgumentParser()
+# argparser.add_argument('component', type=str, help='Component name')
+# argparser.add_argument('file_path', type=str, help='File path')
+# args = argparser.parse_args()
+
+# if args.component == 'ap':
+#     edit_ap(args.file_path)
+# elif args.component == 'component':
+#     edit_component(args.file_path)

@@ -299,6 +299,65 @@ int boot_components() {
     return SUCCESS_RETURN;
 }
 
+// void genrate_key(uint8_t *key, uint32_t component_id) {
+//     uint8_t key_buffer[16];
+//     memcpy(key_buffer, C_KEY, 16);
+//     for (int i = 0; i<4; i++) {
+//         key_buffer[15-i] = key_buffer[15-i] ^ ((component_id >> (8 * i)) % 256);
+//     }
+//     memcpy(key, key_buffer, 16);
+// }
+
+// uint8_t hex_to_uint8_t(char hex) {
+//     if (hex >= '0' && hex <= '9') {
+//         return hex - '0';
+//     } else if (hex >= 'a' && hex <= 'f') {
+//         return hex - 'a' + 10;
+//     } else if (hex >= 'A' && hex <= 'F') {
+//         return hex - 'A' + 10;
+//     }
+//     return 0;
+// }
+
+// int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext) {
+//     Aes ctx; // Context for decryption
+//     int result; // Library result
+
+//     // Ensure valid length
+//     if (len <= 0 || len % BLOCK_SIZE)
+//         return -1;
+
+//     // Set the key for decryption
+//     result = wc_AesSetKey(&ctx, key, 16, NULL, AES_DECRYPTION);
+//     if (result != 0)
+//         return result; // Report error
+
+//     // Decrypt each block
+//     for (int i = 0; i < len - 1; i += BLOCK_SIZE) {
+//         result = wc_AesDecryptDirect(&ctx, plaintext + i, ciphertext + i);
+//         if (result != 0)
+//             return result; // Report error
+//     }
+//     return 0;
+// }
+
+// void decypt(uint8_t *transmit_buffer, uint32_t component_id) {
+//     char LOC[256], DATE[256], CUST[256];
+//     char decrypt_LOC[256], decrypt_DATE[256], decrypt_CUST[256];
+//     sscanf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", LOC, DATE, CUST);
+    
+//     uint8_t key[16];
+//     char key_str[33] = C_KEY;
+//     for (int i = 0; i<16; i++) {
+//         key[i] = hex_to_uint8_t(key_str[2 * i]) * 16 + hex_to_uint8_t(key_str[2 * i + 1]); 
+//     }
+//     genrate_key(key, component_id);
+//     decrypt_sym(LOC, strlen(LOC), key, decrypt_LOC);
+//     decrypt_sym(DATE, strlen(DATE), key, decrypt_DATE);
+//     decrypt_sym(CUST, strlen(CUST), key, decrypt_CUST);
+//     sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", decrypt_LOC, decrypt_DATE, decrypt_CUST);
+// }
+
 int attest_component(uint32_t component_id) {
     // Buffers for board link communication
     uint8_t receive_buffer[MAX_I2C_MESSAGE_LEN];
@@ -317,6 +376,8 @@ int attest_component(uint32_t component_id) {
         print_error("Could not attest component\n");
         return ERROR_RETURN;
     }
+
+    // decypt(receive_buffer, component_id);
 
     // Print out attestation data 
     print_info("C>0x%08x\n", component_id);
@@ -519,3 +580,4 @@ int main() {
     // Code never reaches here
     return 0;
 }
+

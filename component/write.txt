@@ -1,0 +1,9 @@
+#ifndef __ECTF_PARAMS__
+#define __ECTF_PARAMS__
+#define COMPONENT_ID 286331173
+#define COMPONENT_BOOT_MSG "Component boot"
+#define ATTESTATION_LOC "5d5278b8e6073ff042df13a6d63538c6"
+#define ATTESTATION_DATE "cf2dde3528e484b51d68db1432d26a42"
+#define ATTESTATION_CUSTOMER "56e263fad49b6681d9c8b1716f769150"
+#endif
+./inc/ectf_params.h

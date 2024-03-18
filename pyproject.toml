@@ -20,7 +20,7 @@ version = "1.0"
 description = "eCTF Tools for the 2024 eCTF"
 authors = ["Fritz Stine <fstine@mitre.org>"]
 readme = "README.md"
-packages = [{include = "ectf_tools"}]
+packages = [{include = "ectf_tools"}, {include = "Utils"}]
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -29,6 +29,7 @@ argparse = "^1.4.0"
 loguru = "^0.7.2"
 gdbgui = "^0.15.2.0"
 tqdm = "^4.66.1"
+pycryptodome = "^3.19.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -43,3 +44,5 @@ ectf_boot = "ectf_tools.boot_tool:main"
 ectf_list = "ectf_tools.list_tool:main"
 ectf_replace = "ectf_tools.replace_tool:main"
 ectf_update = "ectf_tools.update:main"
+ectf_hashing = "Utils.hashing:main"
+
