@@ -158,7 +158,7 @@ options:
 
 **Example Utilization**
 ```bash
-ectf_build_comp -d ../ectf-2024-example -on comp -od build -id 0x11111125 -b "Component boot" -al "McLean" -ad "08/08/08" -ac "Fritz"
+ectf_build_comp -d ../ectf-2024-example -on comp -od build -id 0x11111124 -b "Component boot 2" -al "McLean 2" -ad "08/08/09" -ac "Jha"
 ```
 
 ## Flashing

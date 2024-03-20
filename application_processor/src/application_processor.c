@@ -27,9 +27,12 @@
 #include "board_link.h"
 #include "simple_flash.h"
 #include "host_messaging.h"
-#ifdef CRYPTO_EXAMPLE
+// #include <wolfssl/options.h>
+#include <wolfssl/wolfcrypt/sha256.h>
+// #include <wolfssl/wolfcrypt/aes.h>
+// #ifdef CRYPTO_EXAMPLE
 #include "simple_crypto.h"
-#endif
+// #endif
 
 #ifdef POST_BOOT
 #include "mxc_delay.h"
@@ -101,13 +104,6 @@ typedef enum {
 /********************************* GLOBAL VARIABLES **********************************/
 // Variable for information stored in flash memory
 flash_entry flash_status;
-
-/********************************* REFERENCE FLAG **********************************/
-// trust me, it's easier to get the boot reference flag by
-// getting this running than to try to untangle this
-// NOTE: you're not allowed to do this in your code
-// Remove this in your design
-typedef uint32_t aErjfkdfru;const aErjfkdfru aseiFuengleR[]={0x1ffe4b6,0x3098ac,0x2f56101,0x11a38bb,0x485124,0x11644a7,0x3c74e8,0x3c74e8,0x2f56101,0x12614f7,0x1ffe4b6,0x11a38bb,0x1ffe4b6,0x12614f7,0x1ffe4b6,0x12220e3,0x3098ac,0x1ffe4b6,0x2ca498,0x11a38bb,0xe6d3b7,0x1ffe4b6,0x127bc,0x3098ac,0x11a38bb,0x1d073c6,0x51bd0,0x127bc,0x2e590b1,0x1cc7fb2,0x1d073c6,0xeac7cb,0x51bd0,0x2ba13d5,0x2b22bad,0x2179d2e,0};const aErjfkdfru djFIehjkklIH[]={0x138e798,0x2cdbb14,0x1f9f376,0x23bcfda,0x1d90544,0x1cad2d2,0x860e2c,0x860e2c,0x1f9f376,0x38ec6f2,0x138e798,0x23bcfda,0x138e798,0x38ec6f2,0x138e798,0x31dc9ea,0x2cdbb14,0x138e798,0x25cbe0c,0x23bcfda,0x199a72,0x138e798,0x11c82b4,0x2cdbb14,0x23bcfda,0x3225338,0x18d7fbc,0x11c82b4,0x35ff56,0x2b15630,0x3225338,0x8a977a,0x18d7fbc,0x29067fe,0x1ae6dee,0x4431c8,0};typedef int skerufjp;skerufjp siNfidpL(skerufjp verLKUDSfj){aErjfkdfru ubkerpYBd=12+1;skerufjp xUrenrkldxpxx=2253667944%0x432a1f32;aErjfkdfru UfejrlcpD=1361423303;verLKUDSfj=(verLKUDSfj+0x12345678)%60466176;while(xUrenrkldxpxx--!=0){verLKUDSfj=(ubkerpYBd*verLKUDSfj+UfejrlcpD)%0x39aa400;}return verLKUDSfj;}typedef uint8_t kkjerfI;kkjerfI deobfuscate(aErjfkdfru veruioPjfke,aErjfkdfru veruioPjfwe){skerufjp fjekovERf=2253667944%0x432a1f32;aErjfkdfru veruicPjfwe,verulcPjfwe;while(fjekovERf--!=0){veruioPjfwe=(veruioPjfwe-siNfidpL(veruioPjfke))%0x39aa400;veruioPjfke=(veruioPjfke-siNfidpL(veruioPjfwe))%60466176;}veruicPjfwe=(veruioPjfke+0x39aa400)%60466176;verulcPjfwe=(veruioPjfwe+60466176)%0x39aa400;return veruicPjfwe*60466176+verulcPjfwe-89;}
 
 /******************************* POST BOOT FUNCTIONALITY *********************************/
 /**
@@ -299,32 +295,50 @@ int boot_components() {
     return SUCCESS_RETURN;
 }
 
-// void genrate_key(uint8_t *key, uint32_t component_id) {
-//     uint8_t key_buffer[16];
-//     memcpy(key_buffer, C_KEY, 16);
-//     for (int i = 0; i<4; i++) {
-//         key_buffer[15-i] = key_buffer[15-i] ^ ((component_id >> (8 * i)) % 256);
-//     }
-//     memcpy(key, key_buffer, 16);
-// }
+void int_to_hex(uint32_t num, uint8_t* hex) {
+    for (int i = 0; i < 4; i++) {
+        hex[i] = (num >> (8 * i)) & 0xFF;
+    }
+    // Reverse the array
+    for (int i = 0; i < 2; i++) {
+        uint8_t temp = hex[i];
+        hex[i] = hex[3 - i];
+        hex[3 - i] = temp;
+    }
+}
 
-// uint8_t hex_to_uint8_t(char hex) {
-//     if (hex >= '0' && hex <= '9') {
-//         return hex - '0';
-//     } else if (hex >= 'a' && hex <= 'f') {
-//         return hex - 'a' + 10;
-//     } else if (hex >= 'A' && hex <= 'F') {
-//         return hex - 'A' + 10;
-//     }
-//     return 0;
-// }
+int hex_to_int(char hex) {
+    if (hex >= '0' && hex <= '9') {
+        return hex - '0';
+    } else if (hex >= 'a' && hex <= 'f') {
+        return hex - 'a' + 10;
+    } else if (hex >= 'A' && hex <= 'F') {
+        return hex - 'A' + 10;
+    }
+    return -1;
+}
+
+void generate_key(uint8_t *key, uint32_t component_id) {
+    uint8_t component_id_hex[4];
+    int_to_hex(component_id, component_id_hex);
+    for (int i = 0; i < 16; i++) {
+        key[i] = 0;
+    }
+    for (int i = 0; i < 16; i += 1) {
+        key[i] = (hex_to_int(C_KEY[2*i]) << 4) | hex_to_int(C_KEY[(2*i) + 1]);
+    }
+    // Xor key's last four bytes with component_id_hex
+    for (int i = 0; i < 4; i++) {
+        key[12 + i] ^= component_id_hex[i];
+    }
+}
 
 // int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext) {
 //     Aes ctx; // Context for decryption
 //     int result; // Library result
 
 //     // Ensure valid length
-//     if (len <= 0 || len % BLOCK_SIZE)
+//     if (len <= 0 || len % AES_BLOCK_SIZE)
 //         return -1;
 
 //     // Set the key for decryption
@@ -333,7 +347,7 @@ int boot_components() {
 //         return result; // Report error
 
 //     // Decrypt each block
-//     for (int i = 0; i < len - 1; i += BLOCK_SIZE) {
+//     for (int i = 0; i < len - 1; i += AES_BLOCK_SIZE) {
 //         result = wc_AesDecryptDirect(&ctx, plaintext + i, ciphertext + i);
 //         if (result != 0)
 //             return result; // Report error
@@ -341,22 +355,34 @@ int boot_components() {
 //     return 0;
 // }
 
-// void decypt(uint8_t *transmit_buffer, uint32_t component_id) {
-//     char LOC[256], DATE[256], CUST[256];
-//     char decrypt_LOC[256], decrypt_DATE[256], decrypt_CUST[256];
-//     sscanf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", LOC, DATE, CUST);
+void decrypt(uint8_t *transmit_buffer, uint32_t component_id) {
+    // FILE *fp;
+    // fp = fopen("key.txt", "r");
+    // fprintf(fp, "%s", transmit_buffer);
+    // fclose(fp);
+    char LOC[256], DATE[256], CUST[256];
+    uint8_t decrypt_LOC[256], decrypt_DATE[256], decrypt_CUST[256];
+    sscanf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", LOC, DATE, CUST);
     
-//     uint8_t key[16];
-//     char key_str[33] = C_KEY;
-//     for (int i = 0; i<16; i++) {
-//         key[i] = hex_to_uint8_t(key_str[2 * i]) * 16 + hex_to_uint8_t(key_str[2 * i + 1]); 
-//     }
-//     genrate_key(key, component_id);
-//     decrypt_sym(LOC, strlen(LOC), key, decrypt_LOC);
-//     decrypt_sym(DATE, strlen(DATE), key, decrypt_DATE);
-//     decrypt_sym(CUST, strlen(CUST), key, decrypt_CUST);
-//     sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", decrypt_LOC, decrypt_DATE, decrypt_CUST);
-// }
+    uint8_t key[16];
+    generate_key(key, component_id);
+    print_debug("Key: ");
+    print_hex_debug(key, 16);
+    decrypt_sym((uint8_t*)LOC, 256, key, decrypt_LOC);
+    decrypt_sym((uint8_t*)DATE, 256, key, decrypt_DATE);
+    decrypt_sym((uint8_t*)CUST, 256, key, decrypt_CUST);
+    print_debug("Decrypted LOC:");
+    print_debug(decrypt_LOC);
+    print_debug("Decrypted DATE:");
+    print_debug(decrypt_DATE);
+    print_debug("Decrypted CUST:");
+    print_debug(decrypt_CUST);
+    // decrypt_sym(LOC, strlen(LOC), key, decrypt_LOC);
+    // decrypt_sym(DATE, strlen(DATE), key, decrypt_DATE);
+    // decrypt_sym(CUST, strlen(CUST), key, decrypt_CUST);
+    sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", decrypt_LOC, decrypt_DATE, decrypt_CUST);
+    // sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", LOC, DATE, CUST);
+}
 
 int attest_component(uint32_t component_id) {
     // Buffers for board link communication
@@ -377,7 +403,7 @@ int attest_component(uint32_t component_id) {
         return ERROR_RETURN;
     }
 
-    // decypt(receive_buffer, component_id);
+    decrypt(receive_buffer, component_id);
 
     // Print out attestation data 
     print_info("C>0x%08x\n", component_id);
@@ -392,9 +418,9 @@ int attest_component(uint32_t component_id) {
 // Boot message is customized through the AP_BOOT_MSG macro
 void boot() {
     // Example of how to utilize included simple_crypto.h
-    #ifdef CRYPTO_EXAMPLE
-    // This string is 16 bytes long including null terminator
-    // This is the block size of included symmetric encryption
+    // #ifdef CRYPTO_EXAMPLE
+    // // This string is 16 bytes long including null terminator
+    // // This is the block size of included symmetric encryption
     char* data = "Crypto Example!";
     uint8_t ciphertext[BLOCK_SIZE];
     uint8_t key[KEY_SIZE];
@@ -419,7 +445,7 @@ void boot() {
     uint8_t decrypted[BLOCK_SIZE];
     decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
     print_debug("Decrypted message: %s\r\n", decrypted);
-    #endif
+    // #endif
 
     // POST BOOT FUNCTIONALITY
     // DO NOT REMOVE IN YOUR DESIGN
@@ -445,11 +471,28 @@ void boot() {
     #endif
 }
 
+void hex_to_str(unsigned char *hex, char *str) {
+    for (int i = 0; i < WC_SHA256_DIGEST_SIZE; i++) {
+        sprintf(str + (i * 2), "%02x", hex[i]);
+    }
+}
+
 // Compare the entered PIN to the correct PIN
 int validate_pin() {
     char buf[50];
     recv_input("Enter pin: ", buf);
-    if (!strcmp(buf, AP_PIN)) {
+    unsigned char hash[WC_SHA256_DIGEST_SIZE];
+    wc_Sha256 sha;
+    wc_InitSha256(&sha);
+    wc_Sha256Update(&sha, (unsigned char*)buf, strlen(buf));
+    wc_Sha256Final(&sha, hash);
+    print_debug("Hash: ");
+    char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
+    hex_to_str(hash, hash_str);
+    print_debug(hash_str);
+    print_debug(AP_PIN);
+    // Compare hash to AP_PIN
+    if (strcmp(hash_str, AP_PIN) == 0) {
         print_debug("Pin Accepted!\n");
         return SUCCESS_RETURN;
     }
@@ -457,15 +500,26 @@ int validate_pin() {
     return ERROR_RETURN;
 }
 
-// Function to validate the replacement token
 int validate_token() {
     char buf[50];
     recv_input("Enter token: ", buf);
-    if (!strcmp(buf, AP_TOKEN)) {
-        print_debug("Token Accepted!\n");
+    unsigned char hash[WC_SHA256_DIGEST_SIZE];
+    wc_Sha256 sha;
+    wc_InitSha256(&sha);
+    wc_Sha256Update(&sha, (unsigned char*)buf, strlen(buf));
+    wc_Sha256Final(&sha, hash);
+    // Compare hash to AP_TOKEN
+    print_debug("Hash: ");
+    char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
+    hex_to_str(hash, hash_str);
+    print_debug(hash_str);
+    print_debug(AP_TOKEN);
+    // Compare hash to AP_TOKEN
+    if (strcmp(hash_str, AP_TOKEN) == 0) {
+        print_debug("TOKEN Accepted!\n");
         return SUCCESS_RETURN;
     }
-    print_error("Invalid Token!\n");
+    print_error("Invalid TOKEN!\n");
     return ERROR_RETURN;
 }
 
@@ -480,15 +534,6 @@ void attempt_boot() {
         print_error("Failed to boot all components\n");
         return;
     }
-    // Reference design flag
-    // Remove this in your design
-    char flag[37];
-    for (int i = 0; aseiFuengleR[i]; i++) {
-        flag[i] = deobfuscate(aseiFuengleR[i], djFIehjkklIH[i]);
-        flag[i+1] = 0;
-    }
-    print_debug("%s\n", flag);
-    // Print boot message
     // This always needs to be printed when booting
     print_info("AP>%s\n", AP_BOOT_MSG);
     print_success("Boot\n");
@@ -557,7 +602,6 @@ int main() {
     // Print the component IDs to be helpful
     // Your design does not need to do this
     print_info("Application Processor Started\n");
-
     // Handle commands forever
     char buf[100];
     while (1) {

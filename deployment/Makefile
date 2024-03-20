@@ -9,6 +9,6 @@ __check_defined = \
 
 all:
 	echo "#define SECRET 1234" > global_secrets.h
-	echo "#define C_KEY 8d40b17a2953df92b3196ed62a5c01ea" > global_secrets.h
+	echo '#define C_KEY "8d40b17a2953df92b3196ed62a5c01ea"' > global_secrets.h
 clean:
 	rm -f global_secrets.h

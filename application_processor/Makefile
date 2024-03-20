@@ -420,9 +420,11 @@ MAKECMDGOALS:=$(.DEFAULT_GOAL)
 endif
 
 
-all:
+setup:
+	ectf_hashing ap ./inc/ectf_params.h
+
+all: setup
 # 	Extend the functionality of the "all" recipe here
-	python3 ../Utils/hashing.py ap ./inc/ectf_params.h
 	arm-none-eabi-size --format=berkeley $(BUILD_DIR)/$(PROJECT).elf
 
 libclean: 

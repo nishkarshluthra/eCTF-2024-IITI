@@ -1,6 +1,9 @@
 import os
 import hashlib
 import argparse
+import asyncio
+import sys
+# from ectf_tools.utils import run_shell
 from Crypto.Cipher import AES
 
 def read_file(file_path):
@@ -39,6 +42,7 @@ def edit_ap(file_path):
                 words = data[i].split(' ')
                 index = words.index(param)
                 words[index+1] = words[index+1].replace('\n', '')
+                words[index+1] = words[index+1][1:-1]
                 words[index+1] = f'"{sha256hash(words[index+1])}"'
                 data[i] = ' '.join(words)
                 data[i] += '\n'
@@ -58,15 +62,17 @@ def edit_component(file_path):
             aes_key = secret.split(' ')[-1]
             break
     aes_key = aes_key.replace('\n', '')
+    aes_key = aes_key.replace('\"', '')
     component_id = ''
     for i in range(len(data)):
         if 'COMPONENT_ID' in data[i]:
             component_id = data[i].split(' ')[-1]
             break
     component_id = component_id.replace('\n', '')
-    component_id = int(component_id, 16)
+    component_id = int(component_id)
     xor = component_id ^ int(aes_key, 16)
     final_key = hex(xor)
+    # final_key = final_key[2:]
     for i in range(len(data)):
         for param in params:
             if param in data[i]:
@@ -75,6 +81,7 @@ def edit_component(file_path):
                 new_data = words[index+1:]
                 new_data = ' '.join(new_data)
                 new_data = new_data.replace('\n', '')
+                new_data = new_data.replace('\"', '')
                 words[index+1] = f'"{aes_encrypt(new_data, final_key)}"'
                 for j in range(len(words)):
                     if j > index+1:
@@ -82,14 +89,13 @@ def edit_component(file_path):
                 data[i] = ' '.join(words)
                 data[i] += '\n'
     write_file(file_path, data)
-    # testing 
+
+    # # testing 
     # for i in range(len(data)):
     #     for param in params:
     #         if param in data[i]:
     #             words = data[i].split(' ')
     #             index = words.index(param)
-    #             words[index+1] = words[index+1].replace('\n', '')
-    #             words[index+1] = words[index+1][1:-1]
     #             print("Param: " + param + "Decrypt: " + aes_decrypt(words[index+1], final_key))
 
 def main():

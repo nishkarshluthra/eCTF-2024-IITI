@@ -422,10 +422,11 @@ ifeq "$(MAKECMDGOALS)" ""
 MAKECMDGOALS:=$(.DEFAULT_GOAL)
 endif
 
-
-all:
-# 	Extend the functionality of the "all" recipe here
+setup:
 	ectf_hashing component ./inc/ectf_params.h
+
+all: setup
+# 	Extend the functionality of the "all" recipe here
 	arm-none-eabi-size --format=berkeley $(BUILD_DIR)/$(PROJECT).elf
 
 libclean: 
