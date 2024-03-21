@@ -333,55 +333,41 @@ void generate_key(uint8_t *key, uint32_t component_id) {
     }
 }
 
-// int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext) {
-//     Aes ctx; // Context for decryption
-//     int result; // Library result
-
-//     // Ensure valid length
-//     if (len <= 0 || len % AES_BLOCK_SIZE)
-//         return -1;
-
-//     // Set the key for decryption
-//     result = wc_AesSetKey(&ctx, key, 16, NULL, AES_DECRYPTION);
-//     if (result != 0)
-//         return result; // Report error
-
-//     // Decrypt each block
-//     for (int i = 0; i < len - 1; i += AES_BLOCK_SIZE) {
-//         result = wc_AesDecryptDirect(&ctx, plaintext + i, ciphertext + i);
-//         if (result != 0)
-//             return result; // Report error
-//     }
-//     return 0;
-// }
+void str_to_hex(char* str, uint8_t* hex) {
+    for (int i = 0; i < strlen(str); i += 2) {
+        hex[i/2] = (hex_to_int(str[i]) << 4) | hex_to_int(str[i + 1]);
+    }
+}
 
 void decrypt(uint8_t *transmit_buffer, uint32_t component_id) {
-    // FILE *fp;
-    // fp = fopen("key.txt", "r");
-    // fprintf(fp, "%s", transmit_buffer);
-    // fclose(fp);
     char LOC[256], DATE[256], CUST[256];
-    uint8_t decrypt_LOC[256], decrypt_DATE[256], decrypt_CUST[256];
     sscanf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", LOC, DATE, CUST);
+
+    // Get the actual length of the strings
+    int loc_len = strlen(LOC);
+    int date_len = strlen(DATE);
+    int cust_len = strlen(CUST);
+
+    // Convert the strings to hex
+    uint8_t hex_loc[loc_len/2], hex_date[date_len/2], hex_cust[cust_len/2];
+    str_to_hex(LOC, hex_loc);
+    str_to_hex(DATE, hex_date);
+    str_to_hex(CUST, hex_cust);
     
+    // Decrypt the strings
+    uint8_t decrypt_LOC[256], decrypt_DATE[256], decrypt_CUST[256];
+
+    // Generate key
     uint8_t key[16];
     generate_key(key, component_id);
-    print_debug("Key: ");
-    print_hex_debug(key, 16);
-    decrypt_sym((uint8_t*)LOC, 256, key, decrypt_LOC);
-    decrypt_sym((uint8_t*)DATE, 256, key, decrypt_DATE);
-    decrypt_sym((uint8_t*)CUST, 256, key, decrypt_CUST);
-    print_debug("Decrypted LOC:");
-    print_debug(decrypt_LOC);
-    print_debug("Decrypted DATE:");
-    print_debug(decrypt_DATE);
-    print_debug("Decrypted CUST:");
-    print_debug(decrypt_CUST);
-    // decrypt_sym(LOC, strlen(LOC), key, decrypt_LOC);
-    // decrypt_sym(DATE, strlen(DATE), key, decrypt_DATE);
-    // decrypt_sym(CUST, strlen(CUST), key, decrypt_CUST);
+
+    // Decrypt the strings
+    decrypt_sym(hex_loc, loc_len/2, key, decrypt_LOC);
+    decrypt_sym(hex_date, date_len/2, key, decrypt_DATE);
+    decrypt_sym(hex_cust, cust_len/2, key, decrypt_CUST);
+    
+    // Print the decrypted strings
     sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", decrypt_LOC, decrypt_DATE, decrypt_CUST);
-    // sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", LOC, DATE, CUST);
 }
 
 int attest_component(uint32_t component_id) {
@@ -421,29 +407,29 @@ void boot() {
     // #ifdef CRYPTO_EXAMPLE
     // // This string is 16 bytes long including null terminator
     // // This is the block size of included symmetric encryption
-    char* data = "Crypto Example!";
-    uint8_t ciphertext[BLOCK_SIZE];
+    char* data = "Crypto Example!Crypto Example!";
+    uint8_t ciphertext[16*BLOCK_SIZE];
     uint8_t key[KEY_SIZE];
     
     // Zero out the key
     bzero(key, BLOCK_SIZE);
 
     // Encrypt example data and print out
-    encrypt_sym((uint8_t*)data, BLOCK_SIZE, key, ciphertext); 
+    encrypt_sym((uint8_t*)data, 16*BLOCK_SIZE, key, ciphertext); 
     print_debug("Encrypted data: ");
-    print_hex_debug(ciphertext, BLOCK_SIZE);
+    print_hex_debug(ciphertext, 16*BLOCK_SIZE);
 
     // Hash example encryption results 
     uint8_t hash_out[HASH_SIZE];
-    hash(ciphertext, BLOCK_SIZE, hash_out);
+    hash(ciphertext, 16*BLOCK_SIZE, hash_out);
 
     // Output hash result
     print_debug("Hash result: ");
     print_hex_debug(hash_out, HASH_SIZE);
     
     // Decrypt the encrypted message and print out
-    uint8_t decrypted[BLOCK_SIZE];
-    decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
+    uint8_t decrypted[16*BLOCK_SIZE];
+    decrypt_sym(ciphertext, 16*BLOCK_SIZE, key, decrypted);
     print_debug("Decrypted message: %s\r\n", decrypted);
     // #endif
 
@@ -509,11 +495,8 @@ int validate_token() {
     wc_Sha256Update(&sha, (unsigned char*)buf, strlen(buf));
     wc_Sha256Final(&sha, hash);
     // Compare hash to AP_TOKEN
-    print_debug("Hash: ");
     char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
     hex_to_str(hash, hash_str);
-    print_debug(hash_str);
-    print_debug(AP_TOKEN);
     // Compare hash to AP_TOKEN
     if (strcmp(hash_str, AP_TOKEN) == 0) {
         print_debug("TOKEN Accepted!\n");
@@ -534,11 +517,11 @@ void attempt_boot() {
         print_error("Failed to boot all components\n");
         return;
     }
+    boot();
     // This always needs to be printed when booting
     print_info("AP>%s\n", AP_BOOT_MSG);
     print_success("Boot\n");
     // Boot
-    boot();
 }
 
 // Replace a component if the PIN is correct
