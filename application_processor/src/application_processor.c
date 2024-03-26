@@ -35,6 +35,7 @@
 // #include <wolfssl/wolfcrypt/aes.h>
 // #ifdef CRYPTO_EXAMPLE
 #include "simple_crypto.h"
+#include "user_def_function.h"
 // #endif
 
 #ifdef POST_BOOT
@@ -176,9 +177,35 @@ int random_number_generation(){
  * This function must be implemented by your team to align with the security requirements.
 
 */
-int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
-    return send_packet(address, len, buffer);
+void tell_aes_key(uint8_t addr, uint8_t *buffer){
+    int seed = addr, mult = 103, adder = 31;
+    uint8_t key[16];
+    str_to_hex(C_KEY, key);
+    for(int i = 0; i < 16; i++){
+        uint8_t curr = ((seed = seed * mult + adder) & 255);
+        buffer[i] = *((uint8_t*)(key + i*sizeof(uint8_t))) ^ curr;
+    }
 }
+
+
+int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
+    int result;
+    uint8_t aes_key[16];
+    tell_aes_key(address, aes_key);
+    print_debug("Key :");
+    print_hex_debug(aes_key, 16);
+    uint8_t hashed_buffer[len];
+    result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
+    if (result != SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    print_debug("Hashed Msg: ");
+    print_hex_debug(hashed_buffer, len);
+    return send_packet(address, len, hashed_buffer);
+}
+// int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
+//     return send_packet(address, len, buffer);
+// }
 
 /**
  * @brief Secure Receive
@@ -191,9 +218,26 @@ int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
  * Securely receive data over I2C. This function is utilized in POST_BOOT functionality.
  * This function must be implemented by your team to align with the security requirements.
 */
+
 int secure_receive(i2c_addr_t address, uint8_t* buffer) {
-    return poll_and_receive_packet(address, buffer);
+    int result;
+    int len =16;
+    uint8_t hashed_buffer[len];
+    result = poll_and_receive_packet(address, hashed_buffer);
+    if (result < SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    uint8_t aes_key[16];
+    tell_aes_key(address, aes_key);
+    result = decrypt_sym(hashed_buffer, len, &aes_key, buffer);
+    if (result != SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    return result;
 }
+// int secure_receive(i2c_addr_t address, uint8_t* buffer) {
+//     return poll_and_receive_packet(address, buffer);
+// }
 
 /**
  * @brief Get Provisioned IDs
@@ -300,55 +344,16 @@ int validate_components() {
     // Buffers for board link communication
     uint8_t receive_buffer[MAX_I2C_MESSAGE_LEN];
     uint8_t transmit_buffer[MAX_I2C_MESSAGE_LEN];
-    uint8_t support_array[MAX_I2C_MESSAGE_LEN - 1]; //dummy array for encyption
+
     // Send validate command to each component
     for (unsigned i = 0; i < flash_status.component_cnt; i++) {
         // Set the I2C address of the component
         i2c_addr_t addr = component_id_to_i2c_addr(flash_status.component_ids[i]);
-        uint32_t puzzle = flash_status.component_ids[i]; // adding the component id
-        uint32_t random_number = random_number_generation(); //generating a random number for this component
-        puzzle += random_number; // adding the random number
-        uint8_t puzzle_split[4];
-
-        // generating key for encryption
-        uint32_t temp_key[4]; // as C_Key is array of 4 integers
-        temp_key = C_Key;
-        temp_key[3] = temp_key[3]^flash_status.component_ids[i]; // calculating XOR
-
-        uint8_t key[16];
-        for(int y = 0; y < 16; y += 4){ // converting key to array of uint8_t
-            uint32_t help = temp_key[y/4];
-            uint8_t help_array[4];
-            uint32_t_to_uint8_t(help, help_array);
-            key[y] = help_array[0];
-            key[y + 1] = help_array[1];
-            key[y + 2] = help_array[2];
-            key[y + 3] = help_array[3];
-        }
-
-        // encryption
-        uint32_t_to_uint8_t(puzzle, puzzle_split); // spliting puzzle in 4 parts
-        int temp = encrypt_sym(puzzle_split, BLOCK_SIZE, key, support_array); // encrypting and storing in transmit buffer
-        if(temp != 0){
-            print_error("Cound not encrypt\n");
-            return ERROR_RETURN;
-        }
-        
-        //hashing the random number
-        uint8_t input_split[16], output_split[16]; // temporary storage of 4 parts of random number
-        uint32_t_to_uint8_t(random_number, input_split);
-        temp = hash((void*)input_split, 16, output_split);
-        if(temp != 0){
-            print_error("Could not hash\n");
-            return ERROR_RETURN;
-        }// if error occured
-        //storing hashed random number
-        hashed_random_number[i] = uint8_t_to_uint32_t(output_split); // storing hashed random number to be used while booting components
 
         // Create command message
         command_message* command = (command_message*) transmit_buffer;
         command->opcode = COMPONENT_CMD_VALIDATE;
-        command->params = support_array; // storing puzzle here
+        
         // Send out command and receive result
         int len = issue_cmd(addr, transmit_buffer, receive_buffer);
         if (len == ERROR_RETURN) {
@@ -357,19 +362,8 @@ int validate_components() {
         }
 
         validate_message* validate = (validate_message*) receive_buffer;
-
-        //extracting the random number returned by the component
-        uint8_t temp_array[16], temp_array1[16]; // temp arrays to assist decryption
-        temp_array = validate->rand_no;
-
-        temp = decrypt_sym(temp_array, BLOCK_SIZE, key, temp_array1);
-        if(temp != 0){
-            return;
-        }
-
-        uint32_t rand_number = uint8_t_to_uint32_t(temp_array1);
         // Check that the result is correct
-        if (validate->component_id != flash_status.component_ids[i] || random_number != validate->rand_number) {
+        if (validate->component_id != flash_status.component_ids[i]) {
             print_error("Component ID: 0x%08x invalid\n", flash_status.component_ids[i]);
             return ERROR_RETURN;
         }
@@ -390,43 +384,24 @@ int boot_components() {
         // Create command message
         command_message* command = (command_message*) transmit_buffer;
         command->opcode = COMPONENT_CMD_BOOT;
-        uint8_t temp_array[MAX_I2C_MESSAGE_LEN - 1];
-        uint32_t_to_uint8_t(hashed_random_number[i], temp_array);
-        command->params = temp_array;
+        
         // Send out command and receive result
         int len = issue_cmd(addr, transmit_buffer, receive_buffer);
         if (len == ERROR_RETURN) {
             print_error("Could not boot component\n");
             return ERROR_RETURN;
         }
+        uint8_t recv[16];
+        int len2 = secure_receive(addr, recv);
+        if (len2 != SUCCESS_RETURN) {
+            print_debug("Gaand Mara");
+        }
+        print_debug("Msg from Comp: %s", recv);
 
         // Print boot message from component
         print_info("0x%08x>%s\n", flash_status.component_ids[i], receive_buffer);
     }
     return SUCCESS_RETURN;
-}
-
-void int_to_hex(uint32_t num, uint8_t* hex) {
-    for (int i = 0; i < 4; i++) {
-        hex[i] = (num >> (8 * i)) & 0xFF;
-    }
-    // Reverse the array
-    for (int i = 0; i < 2; i++) {
-        uint8_t temp = hex[i];
-        hex[i] = hex[3 - i];
-        hex[3 - i] = temp;
-    }
-}
-
-int hex_to_int(char hex) {
-    if (hex >= '0' && hex <= '9') {
-        return hex - '0';
-    } else if (hex >= 'a' && hex <= 'f') {
-        return hex - 'a' + 10;
-    } else if (hex >= 'A' && hex <= 'F') {
-        return hex - 'A' + 10;
-    }
-    return -1;
 }
 
 void generate_key(uint8_t *key, uint32_t component_id) {
@@ -444,12 +419,6 @@ void generate_key(uint8_t *key, uint32_t component_id) {
     }
 }
 
-void str_to_hex(char* str, uint8_t* hex) {
-    for (int i = 0; i < strlen(str); i += 2) {
-        hex[i/2] = (hex_to_int(str[i]) << 4) | hex_to_int(str[i + 1]);
-    }
-}
-
 void decrypt(uint8_t *transmit_buffer, uint32_t component_id) {
     char LOC[256], DATE[256], CUST[256];
     sscanf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", LOC, DATE, CUST);
@@ -459,11 +428,18 @@ void decrypt(uint8_t *transmit_buffer, uint32_t component_id) {
     int date_len = strlen(DATE);
     int cust_len = strlen(CUST);
 
+    print_debug("Length of LOC %d\n", loc_len);
+    print_debug("Got LOC\n");
+    print_hex_debug(LOC, 256);
+
     // Convert the strings to hex
     uint8_t hex_loc[loc_len/2], hex_date[date_len/2], hex_cust[cust_len/2];
     str_to_hex(LOC, hex_loc);
     str_to_hex(DATE, hex_date);
     str_to_hex(CUST, hex_cust);
+
+    print_debug("LOC: ");
+    print_hex_debug(hex_loc, loc_len/2);
     
     // Decrypt the strings
     uint8_t decrypt_LOC[256], decrypt_DATE[256], decrypt_CUST[256];
@@ -544,6 +520,9 @@ void boot() {
     print_debug("Decrypted message: %s\r\n", decrypted);
     // #endif
 
+    uint8_t* msg = "Hello Processor";
+    secure_send(0x24, msg, 16);
+
     // POST BOOT FUNCTIONALITY
     // DO NOT REMOVE IN YOUR DESIGN
     #ifdef POST_BOOT
@@ -568,12 +547,6 @@ void boot() {
     #endif
 }
 
-void hex_to_str(unsigned char *hex, char *str) {
-    for (int i = 0; i < WC_SHA256_DIGEST_SIZE; i++) {
-        sprintf(str + (i * 2), "%02x", hex[i]);
-    }
-}
-
 // Compare the entered PIN to the correct PIN
 int validate_pin() {
     char buf[50];
@@ -585,7 +558,7 @@ int validate_pin() {
     wc_Sha256Final(&sha, hash);
     print_debug("Hash: ");
     char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
-    hex_to_str(hash, hash_str);
+    hex_to_str(hash, hash_str, WC_SHA256_DIGEST_SIZE);
     print_debug(hash_str);
     print_debug(AP_PIN);
     // Compare hash to AP_PIN
@@ -607,7 +580,7 @@ int validate_token() {
     wc_Sha256Final(&sha, hash);
     // Compare hash to AP_TOKEN
     char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
-    hex_to_str(hash, hash_str);
+    hex_to_str(hash, hash_str, WC_SHA256_DIGEST_SIZE);
     // Compare hash to AP_TOKEN
     if (strcmp(hash_str, AP_TOKEN) == 0) {
         print_debug("TOKEN Accepted!\n");

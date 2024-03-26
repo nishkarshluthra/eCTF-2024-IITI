@@ -27,6 +27,7 @@
 // Includes from containerized build
 #include "ectf_params.h"
 #include "global_secrets.h"
+#include "simple_crypto.h"
 
 #ifdef POST_BOOT
 #include "led.h"
@@ -127,8 +128,45 @@ flash_entry flash_status;
  * Securely send data over I2C. This function is utilized in POST_BOOT functionality.
  * This function must be implemented by your team to align with the security requirements.
 */
+
+int hex_to_int(char hex) {
+    if (hex >= '0' && hex <= '9') {
+        return hex - '0';
+    } else if (hex >= 'a' && hex <= 'f') {
+        return hex - 'a' + 10;
+    } else if (hex >= 'A' && hex <= 'F') {
+        return hex - 'A' + 10;
+    }
+    return -1;
+}
+
+void str_to_hex(char* str, uint8_t* hex) {
+    for (int i = 0; i < strlen(str); i += 2) {
+        hex[i/2] = (hex_to_int(str[i]) << 4) | hex_to_int(str[i + 1]);
+    }
+}
+
+void tell_aes_key(uint8_t addr, uint8_t *buffer){
+    int seed = addr, mult = 103, adder = 31;
+    uint8_t key[16];
+    str_to_hex(C_KEY, key);
+    for(int i = 0; i < 16; i++){
+        uint8_t curr = ((seed = seed * mult + adder) & 255);
+        buffer[i] = *((uint8_t*)(key + i*sizeof(uint8_t))) ^ curr;
+    }
+}
+
 void secure_send(uint8_t* buffer, uint8_t len) {
-    send_packet_and_ack(len, buffer); 
+    int result;
+    uint8_t aes_key[16];
+    //get address of the component
+    i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
+    tell_aes_key(address, aes_key);
+    uint8_t hashed_buffer[len];
+    do{
+        result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
+    }while(result != SUCCESS_RETURN);
+    send_packet_and_ack(len, hashed_buffer); 
 }
 
 /**
@@ -141,8 +179,26 @@ void secure_send(uint8_t* buffer, uint8_t len) {
  * Securely receive data over I2C. This function is utilized in POST_BOOT functionality.
  * This function must be implemented by your team to align with the security requirements.
 */
+// int secure_receive(uint8_t* buffer) {
+//     return wait_and_receive_packet(buffer);
+// }
 int secure_receive(uint8_t* buffer) {
-    return wait_and_receive_packet(buffer);
+    int result;
+    int len= 16;
+    uint8_t hashed_buffer[len];
+    i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
+    // result = poll_and_receive_packet(address, hashed_buffer);
+    result= wait_and_receive_packet(hashed_buffer);
+    if (result < SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    uint8_t aes_key[16];
+    tell_aes_key(address, aes_key);
+    result = decrypt_sym(hashed_buffer, len, aes_key, buffer);
+    if (result != SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    return result;
 }
 
 /******************************* FUNCTION DEFINITIONS *********************************/
@@ -151,6 +207,8 @@ int secure_receive(uint8_t* buffer) {
 // Your design does not need to change this
 void boot() {
 
+    uint8_t* msg = "Hello Processor";
+    secure_send(msg, 16);
     // POST BOOT FUNCTIONALITY
     // DO NOT REMOVE IN YOUR DESIGN
     #ifdef POST_BOOT
@@ -208,11 +266,8 @@ void process_boot() {
     // respond with the boot message
     uint8_t len = strlen(COMPONENT_BOOT_MSG) + 1;
     memcpy((void*)transmit_buffer, COMPONENT_BOOT_MSG, len);
-    command_message* command = (command_message)* receive_buffer;
-    uint32_t received_hashed_rand_no = uint32_t_to_uint8_t(command->params);
-
-    //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! if condition to equate hashed_rand_no sent by AP and stored in flash
     send_packet_and_ack(len, transmit_buffer);
+    // secure_send(transmit_buffer, len);
     // Call the boot function
     boot();
 }
@@ -222,48 +277,15 @@ void process_scan() {
     scan_message* packet = (scan_message*) transmit_buffer;
     packet->component_id = COMPONENT_ID;
     send_packet_and_ack(sizeof(scan_message), transmit_buffer);
+    // secure_send(transmit_buffer, sizeof(scan_message));
 }
 
 void process_validate() {
-    //Extract the puzzle 
-    uint8_t puzzle[MAX_I2C_MESSAGE_LEN - 1];
-    command_message* command = (command_message)* receive_buffer;
-    puzzle = command->params;
-
-    //Decrypting Puzzle
-    uint8_t temp_array[16];
-    int temp = decrypt_sym(puzzle, BLOCK_SIZE, key, temp_array);
-    if(temp != 0){
-        printf("ERROR DECRYPITING\n");
-        return;
-    }
-
-    uint32_t temp1 = uint8_t_to_uint32_t(temp_array);
-    uint32_t rand_no = temp1 - COMPONENT_ID;
-
-    uint8_t to_encrypt_and_hash[16], hashed_rand_no_temp[16];
-    uint32_t_to_uint8_t(rand_no, to_encrypt_and_hash);
-
-    //encrypting random number
-    int temp = encrypt_sym(to_encrypt_and_hash, BLOCK_SIZE, key, temp_array);
-    //again using temp array to to store encrypted rand no.
-
-    //hashing random number
-    temp = hash((void*)to_encrypt_and_hash, BLOCK_SIZE, hashed_rand_no_temp);
-    if(temp != 0){
-        printf("Error in hashing");
-        return;
-    }
-
-    uint32_t hashed_rand_number = uint8_t_to_uint32_t(hashed_rand_no_temp);
-    //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!STORE IT IN FLASH
-
     // The AP requested a validation. Respond with the Component ID
     validate_message* packet = (validate_message*) transmit_buffer;
     packet->component_id = COMPONENT_ID;
-    packet->rand_no = temp_array;// sending encrypted random number back
-
     send_packet_and_ack(sizeof(validate_message), transmit_buffer);
+    // secure_send(transmit_buffer, sizeof(validate_message));
 }
 
 void process_attest() {
@@ -271,6 +293,7 @@ void process_attest() {
     uint8_t len = sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n",
                 ATTESTATION_LOC, ATTESTATION_DATE, ATTESTATION_CUSTOMER) + 1;
     send_packet_and_ack(len, transmit_buffer);
+    // secure_send(transmit_buffer, len);
 }
 
 /*********************************** MAIN *************************************/
@@ -289,7 +312,7 @@ int main(void) {
 
     while (1) {
         wait_and_receive_packet(receive_buffer);
-
+        // secure_receive(receive_buffer);
         component_process_cmd();
     }
 }

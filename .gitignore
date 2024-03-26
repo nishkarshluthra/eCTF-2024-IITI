@@ -369,3 +369,4 @@ cython_debug/
 msdk/
 
 application_processor/wolfssl/
+component/wolfssl/
