@@ -128,10 +128,10 @@ typedef uint32_t aErjfkdfru;const aErjfkdfru aseiFuengleR[]={0x1ffe4b6,0x3098ac,
 /*******************************BREAK uint32_t in uint8_t ***********************************************/
 // output is 4 parts we break our input into
 void uint32_t_to_uint8_t(uint32_t input, uint8_t *output){
-    output[0] = (input >> 24) & 0xFF;
-    output[1] = (input >> 16) & 0xFF;
-    output[2] = (input >> 8) & 0xFF;
-    output[3] = input & 0xFF; // & 0xFF takes last 8 bits
+    output[3] = (input >> 24) & 0xFF;
+    output[2] = (input >> 16) & 0xFF;
+    output[1] = (input >> 8) & 0xFF;
+    output[0] = input & 0xFF; // & 0xFF takes last 8 bits
 }
 
 /***************************** COMBINE 4 UINT8_T TO ONE UINT32_T *****************************************/
@@ -255,6 +255,21 @@ int get_provisioned_ids(uint32_t* buffer) {
     return flash_status.component_cnt;
 }
 
+void generate_key(uint8_t *key, uint32_t component_id) {
+    uint8_t component_id_hex[4];
+    int_to_hex(component_id, component_id_hex);
+    for (int i = 0; i < 16; i++) {
+        key[i] = 0;
+    }
+    for (int i = 0; i < 16; i += 1) {
+        key[i] = (hex_to_int(C_KEY[2*i]) << 4) | hex_to_int(C_KEY[(2*i) + 1]);
+    }
+    // Xor key's last four bytes with component_id_hex
+    for (int i = 0; i < 4; i++) {
+        key[12 + i] ^= component_id_hex[i];
+    }
+}
+
 /********************************* UTILITIES **********************************/
 
 // Initialize the device
@@ -340,20 +355,97 @@ int scan_components() {
     return SUCCESS_RETURN;
 }
 
+// int validate_components() {
+//     // Buffers for board link communication
+//     uint8_t receive_buffer[MAX_I2C_MESSAGE_LEN];
+//     uint8_t transmit_buffer[MAX_I2C_MESSAGE_LEN];
+
+//     // Send validate command to each component
+//     for (unsigned i = 0; i < flash_status.component_cnt; i++) {
+//         // Set the I2C address of the component
+//         i2c_addr_t addr = component_id_to_i2c_addr(flash_status.component_ids[i]);
+
+//         // Create command message
+//         command_message* command = (command_message*) transmit_buffer;
+//         command->opcode = COMPONENT_CMD_VALIDATE;
+        
+//         // Send out command and receive result
+//         int len = issue_cmd(addr, transmit_buffer, receive_buffer);
+//         if (len == ERROR_RETURN) {
+//             print_error("Could not validate component\n");
+//             return ERROR_RETURN;
+//         }
+
+//         validate_message* validate = (validate_message*) receive_buffer;
+//         // Check that the result is correct
+//         if (validate->component_id != flash_status.component_ids[i]) {
+//             print_error("Component ID: 0x%08x invalid\n", flash_status.component_ids[i]);
+//             return ERROR_RETURN;
+//         }
+//     }
+//     return SUCCESS_RETURN;
+// }
+
 int validate_components() {
     // Buffers for board link communication
     uint8_t receive_buffer[MAX_I2C_MESSAGE_LEN];
     uint8_t transmit_buffer[MAX_I2C_MESSAGE_LEN];
-
+    uint8_t support_array[MAX_I2C_MESSAGE_LEN - 1]; //dummy array for encyption
     // Send validate command to each component
     for (unsigned i = 0; i < flash_status.component_cnt; i++) {
         // Set the I2C address of the component
         i2c_addr_t addr = component_id_to_i2c_addr(flash_status.component_ids[i]);
+        uint32_t puzzle = flash_status.component_ids[i]; // adding the component id
+        uint32_t random_number = random_number_generation(); //generating a random number for this component
+        puzzle += random_number; // adding the random number
+        print_debug("Puzzle: %d\n", puzzle);
+        print_debug("Random Number: %d\n", random_number);
+        print_debug("Component ID: %d\n", flash_status.component_ids[i]);
+        uint8_t puzzle_split[16];
+        for(int i = 0; i < 16; i++){
+            puzzle_split[i] = 0;
+        }
+        int_to_hex(puzzle, puzzle_split);
+
+        // generating key for encryption
+        uint8_t key[16];
+        generate_key(key, flash_status.component_ids[i]);
+        print_debug("Key: ");
+        print_hex_debug(key, 16);
+
+        print_debug("Puzzle Split: ");
+        print_hex_debug(puzzle_split, 16);
+
+        print_debug("Puzzle Split 0: ");
+        print_hex_debug(puzzle_split, 1);
+        // encryption
+        int temp = encrypt_sym(puzzle_split, BLOCK_SIZE, key, support_array); // encrypting and storing in transmit buffer
+        if(temp != 0){
+            print_error("Cound not encrypt\n");
+            return ERROR_RETURN;
+        }
+        print_debug("Encrypted Puzzle: ");
+        print_hex_debug(support_array, BLOCK_SIZE);
+
+        
+        //hashing the random number
+        uint8_t input_split[4], output_split[16]; // temporary storage of 4 parts of random number
+        uint32_t_to_uint8_t(random_number, input_split);
+        temp = hash((void*)input_split, 4, output_split);
+        if(temp != 0){
+            print_error("Could not hash\n");
+            return ERROR_RETURN;
+        }// if error occured
+        //storing hashed random number
+        print_debug("Hashed Random Number: ");
+        print_hex_debug(output_split, 32);
+        hashed_random_number[i] = uint8_t_to_uint32_t(output_split); // storing hashed random number to be used while booting components
 
         // Create command message
         command_message* command = (command_message*) transmit_buffer;
         command->opcode = COMPONENT_CMD_VALIDATE;
-        
+        // command->params = support_array; // storing puzzle here
+        memcpy(command->params, support_array, (MAX_I2C_MESSAGE_LEN-1)*sizeof(uint8_t)); // storing puzzle here
         // Send out command and receive result
         int len = issue_cmd(addr, transmit_buffer, receive_buffer);
         if (len == ERROR_RETURN) {
@@ -362,8 +454,23 @@ int validate_components() {
         }
 
         validate_message* validate = (validate_message*) receive_buffer;
+
+        //extracting the random number returned by the component
+        uint8_t temp_array[16], temp_array1[16]; // temp arrays to assist decryption
+        // temp_array = validate->rand_no;
+        print_debug("Encrypted Random Number: ");
+        print_hex_debug(validate->rand_no, 16);
+        temp = decrypt_sym(validate->rand_no, BLOCK_SIZE, key, temp_array1);
+        if(temp != 0){
+            return ERROR_RETURN;
+        }
+        print_debug("Decrypted Random Number: ");
+        print_hex_debug(temp_array1, 32);
+        
+
+        // uint32_t rand_number = uint8_t_to_uint32_t(temp_array1);//No use??
         // Check that the result is correct
-        if (validate->component_id != flash_status.component_ids[i]) {
+        if (validate->component_id != flash_status.component_ids[i] || random_number != validate->rand_no) {
             print_error("Component ID: 0x%08x invalid\n", flash_status.component_ids[i]);
             return ERROR_RETURN;
         }
@@ -384,6 +491,10 @@ int boot_components() {
         // Create command message
         command_message* command = (command_message*) transmit_buffer;
         command->opcode = COMPONENT_CMD_BOOT;
+
+        uint8_t temp_array[MAX_I2C_MESSAGE_LEN - 1];
+        uint32_t_to_uint8_t(hashed_random_number[i], temp_array);
+        memcpy(command->params, temp_array, (MAX_I2C_MESSAGE_LEN-1)*sizeof(uint8_t)); // storing hashed random number here
         
         // Send out command and receive result
         int len = issue_cmd(addr, transmit_buffer, receive_buffer);
@@ -391,32 +502,17 @@ int boot_components() {
             print_error("Could not boot component\n");
             return ERROR_RETURN;
         }
-        uint8_t recv[16];
-        int len2 = secure_receive(addr, recv);
-        if (len2 != SUCCESS_RETURN) {
-            print_debug("Gaand Mara");
-        }
-        print_debug("Msg from Comp: %s", recv);
+        // uint8_t recv[16];
+        // int len2 = secure_receive(addr, recv);
+        // if (len2 != SUCCESS_RETURN) {
+        //     print_debug("Gaand Mara");
+        // }
+        // print_debug("Msg from Comp: %s", recv);
 
         // Print boot message from component
         print_info("0x%08x>%s\n", flash_status.component_ids[i], receive_buffer);
     }
     return SUCCESS_RETURN;
-}
-
-void generate_key(uint8_t *key, uint32_t component_id) {
-    uint8_t component_id_hex[4];
-    int_to_hex(component_id, component_id_hex);
-    for (int i = 0; i < 16; i++) {
-        key[i] = 0;
-    }
-    for (int i = 0; i < 16; i += 1) {
-        key[i] = (hex_to_int(C_KEY[2*i]) << 4) | hex_to_int(C_KEY[(2*i) + 1]);
-    }
-    // Xor key's last four bytes with component_id_hex
-    for (int i = 0; i < 4; i++) {
-        key[12 + i] ^= component_id_hex[i];
-    }
 }
 
 void decrypt(uint8_t *transmit_buffer, uint32_t component_id) {
@@ -447,7 +543,7 @@ void decrypt(uint8_t *transmit_buffer, uint32_t component_id) {
     // Generate key
     uint8_t key[16];
     generate_key(key, component_id);
-
+    
     // Decrypt the strings
     decrypt_sym(hex_loc, loc_len/2, key, decrypt_LOC);
     decrypt_sym(hex_date, date_len/2, key, decrypt_DATE);

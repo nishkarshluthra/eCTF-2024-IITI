@@ -51,6 +51,7 @@
 
 #define FLASH_ADDR ((MXC_FLASH_MEM_BASE + MXC_FLASH_MEM_SIZE) - (2 * MXC_FLASH_PAGE_SIZE))
 #define FLASH_MAGIC 0xDEADBEEF
+uint32_t hashed_rand_number;
 
 /******************************** TYPE DEFINITIONS ********************************/
 // Commands received by Component using 32 bit integer
@@ -87,9 +88,9 @@ typedef struct{
 /********************************* FUNCTION DECLARATIONS **********************************/
 // Core function definitions
 void component_process_cmd(void);
-void process_boot(void);
+void process_boot(command_message* command);
 void process_scan(void);
-void process_validate(void);
+void process_validate(command_message* command);
 void process_attest(void);
 
 /*******************************BREAK uint32_t in uint8_t ***********************************************/
@@ -105,10 +106,10 @@ void uint32_t_to_uint8_t(uint32_t input, uint8_t *output){
 uint32_t uint8_t_to_uint32_t(uint8_t *arr){
     uint32_t result = 0;
 
-    result |= ((uint32_t)arr[0] << 24);
-    result |= ((uint32_t)arr[1] << 16);
-    result |= ((uint32_t)arr[2] << 8);
-    result |= arr[3];
+    result |= (uint32_t)arr[0] << 24;
+    result |= (uint32_t)arr[1] << 16;
+    result |= (uint32_t)arr[2] << 8;
+    result |= (uint32_t)arr[3];
 
     return result;
 }
@@ -201,6 +202,33 @@ int secure_receive(uint8_t* buffer) {
     return result;
 }
 
+void int_to_hex(uint32_t num, uint8_t* hex) {
+    for (int i = 0; i < 4; i++) {
+        hex[i] = (num >> (8 * i)) & 0xFF;
+    }
+    // Reverse the array
+    for (int i = 0; i < 2; i++) {
+        uint8_t temp = hex[i];
+        hex[i] = hex[3 - i];
+        hex[3 - i] = temp;
+    }
+}
+
+void generate_key(uint8_t *key, uint32_t component_id) {
+    uint8_t component_id_hex[4];
+    int_to_hex(component_id, component_id_hex);
+    for (int i = 0; i < 16; i++) {
+        key[i] = 0;
+    }
+    for (int i = 0; i < 16; i += 1) {
+        key[i] = (hex_to_int(C_KEY[2*i]) << 4) | hex_to_int(C_KEY[(2*i) + 1]);
+    }
+    // Xor key's last four bytes with component_id_hex
+    for (int i = 0; i < 4; i++) {
+        key[12 + i] ^= component_id_hex[i];
+    }
+}
+
 /******************************* FUNCTION DEFINITIONS *********************************/
 
 // Example boot sequence
@@ -244,13 +272,13 @@ void component_process_cmd() {
     // Output to application processor dependent on command received
     switch (command->opcode) {
     case COMPONENT_CMD_BOOT:
-        process_boot();
+        process_boot(command);
         break;
     case COMPONENT_CMD_SCAN:
         process_scan();
         break;
     case COMPONENT_CMD_VALIDATE:
-        process_validate();
+        process_validate(command);
         break;
     case COMPONENT_CMD_ATTEST:
         process_attest();
@@ -261,11 +289,19 @@ void component_process_cmd() {
     }
 }
 
-void process_boot() {
+void process_boot(command_message* command) {
     // The AP requested a boot. Set `component_boot` for the main loop and
     // respond with the boot message
     uint8_t len = strlen(COMPONENT_BOOT_MSG) + 1;
     memcpy((void*)transmit_buffer, COMPONENT_BOOT_MSG, len);
+    // command_message* command = (command_message)* receive_buffer;
+    uint32_t received_hashed_rand_no = uint8_t_to_uint32_t(command->params);
+
+    //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! if condition to equate hashed_rand_no sent by AP and stored in flash
+    if(received_hashed_rand_no != hashed_rand_number){
+        printf("ERROR: Hashed Random Number Mismatch\n");
+        return ERROR_RETURN;
+    }
     send_packet_and_ack(len, transmit_buffer);
     // secure_send(transmit_buffer, len);
     // Call the boot function
@@ -280,12 +316,81 @@ void process_scan() {
     // secure_send(transmit_buffer, sizeof(scan_message));
 }
 
-void process_validate() {
-    // The AP requested a validation. Respond with the Component ID
+// void process_validate() {
+//     // The AP requested a validation. Respond with the Component ID
+//     validate_message* packet = (validate_message*) transmit_buffer;
+//     packet->component_id = COMPONENT_ID;
+//     send_packet_and_ack(sizeof(validate_message), transmit_buffer);
+//     // secure_send(transmit_buffer, sizeof(validate_message));
+// }
+
+// void process_attest() {
+//     // The AP requested attestation. Respond with the attestation data
+//     uint8_t len = sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n",
+//                 ATTESTATION_LOC, ATTESTATION_DATE, ATTESTATION_CUSTOMER) + 1;
+//     send_packet_and_ack(len, transmit_buffer);
+//     // secure_send(transmit_buffer, len);
+// }
+
+void process_validate(command_message* command) {
+    //Extract the puzzle 
+    uint8_t puzzle[MAX_I2C_MESSAGE_LEN - 1];
+
     validate_message* packet = (validate_message*) transmit_buffer;
     packet->component_id = COMPONENT_ID;
+    memcpy(packet->rand_no, puzzle, 16*sizeof(uint8_t));
     send_packet_and_ack(sizeof(validate_message), transmit_buffer);
-    // secure_send(transmit_buffer, sizeof(validate_message));
+    // command_message* command = (command_message)* receive_buffer;
+    // validate_message* command = (validate_message*) receive_buffer;
+    memcpy(puzzle, command->params, (MAX_I2C_MESSAGE_LEN - 1)*sizeof(uint8_t));
+    uint8_t key[16];
+    generate_key(key, COMPONENT_ID);
+    //Decrypting Puzzle
+    uint8_t temp_array[16];
+    int temp = decrypt_sym(puzzle, BLOCK_SIZE, key, temp_array);
+    if(temp != 0){
+        printf("ERROR DECRYPITING\n");
+        return;
+    }
+
+    uint32_t temp1 = uint8_t_to_uint32_t(temp_array);
+    // validate_message* packet = (validate_message*) transmit_buffer;
+    // packet->component_id = COMPONENT_ID;
+    // memcpy(packet->rand_no, temp_array, 16*sizeof(uint8_t));
+    // send_packet_and_ack(sizeof(validate_message), transmit_buffer);
+
+    uint32_t rand_no = temp1 - COMPONENT_ID;
+
+    uint8_t to_encrypt_and_hash[16], hashed_rand_no_temp[16];
+    
+    uint8_t rand_no_split[16];
+        for(int i = 0; i < 16; i++){
+            rand_no_split[i] = 0;
+        }
+    int_to_hex(rand_no, rand_no_split);
+
+    //encrypting random number
+    temp = encrypt_sym(rand_no_split, BLOCK_SIZE, key, temp_array);
+    //again using temp array to to store encrypted rand no.
+    if(temp != 0){
+        printf("Error in hashing");
+        return;
+    }
+
+    temp = hash((void*)rand_no_split, BLOCK_SIZE, hashed_rand_no_temp);
+    if(temp != 0){
+        printf("Error in hashing");
+        return;
+    }
+
+    hashed_rand_number = uint8_t_to_uint32_t(hashed_rand_no_temp);
+    // The AP requested a validation. Respond with the Component ID
+    // validate_message* packet = (validate_message*) transmit_buffer;
+    // packet->component_id = COMPONENT_ID;
+    // packet->rand_no = temp_array;// sending encrypted random number back
+    // memcpy(packet->rand_no, temp_array, 16*sizeof(uint8_t));
+
+    // send_packet_and_ack(sizeof(validate_message), transmit_buffer);
 }
 
 void process_attest() {
@@ -293,9 +398,7 @@ void process_attest() {
     uint8_t len = sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n",
                 ATTESTATION_LOC, ATTESTATION_DATE, ATTESTATION_CUSTOMER) + 1;
     send_packet_and_ack(len, transmit_buffer);
-    // secure_send(transmit_buffer, len);
 }
-
 /*********************************** MAIN *************************************/
 
 int main(void) {
