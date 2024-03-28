@@ -69,6 +69,8 @@
 #define SUCCESS_RETURN 0
 #define ERROR_RETURN -1
 
+uint8_t len_issue_cmd = sizeof(uint8_t);
+
 /******************************** TYPE DEFINITIONS ********************************/
 // Data structure for sending commands to component
 // Params allows for up to MAX_I2C_MESSAGE_LEN - 1 bytes to be send
@@ -116,7 +118,8 @@ typedef enum {
 flash_entry flash_status;
 
 // to store Map in AP
-uint32_t hashed_random_number[COMPONENT_CNT];
+uint8_t hashed_random_number0[16];
+uint8_t hashed_random_number1[16];
 
 /********************************* REFERENCE FLAG **********************************/
 // trust me, it's easier to get the boot reference flag by
@@ -305,7 +308,7 @@ void init() {
 // Send a command to a component and receive the result
 int issue_cmd(i2c_addr_t addr, uint8_t* transmit, uint8_t* receive) {
     // Send message
-    int result = send_packet(addr, sizeof(uint8_t), transmit);
+    int result = send_packet(addr, len_issue_cmd, transmit);
     if (result == ERROR_RETURN) {
         return ERROR_RETURN;
     }
@@ -398,9 +401,9 @@ int validate_components() {
         uint32_t puzzle = flash_status.component_ids[i]; // adding the component id
         uint32_t random_number = random_number_generation(); //generating a random number for this component
         puzzle += random_number; // adding the random number
+
         print_debug("Puzzle: %d\n", puzzle);
-        print_debug("Random Number: %d\n", random_number);
-        print_debug("Component ID: %d\n", flash_status.component_ids[i]);
+
         uint8_t puzzle_split[16];
         for(int i = 0; i < 16; i++){
             puzzle_split[i] = 0;
@@ -410,14 +413,7 @@ int validate_components() {
         // generating key for encryption
         uint8_t key[16];
         generate_key(key, flash_status.component_ids[i]);
-        print_debug("Key: ");
-        print_hex_debug(key, 16);
 
-        print_debug("Puzzle Split: ");
-        print_hex_debug(puzzle_split, 16);
-
-        print_debug("Puzzle Split 0: ");
-        print_hex_debug(puzzle_split, 1);
         // encryption
         int temp = encrypt_sym(puzzle_split, BLOCK_SIZE, key, support_array); // encrypting and storing in transmit buffer
         if(temp != 0){
@@ -438,39 +434,46 @@ int validate_components() {
         }// if error occured
         //storing hashed random number
         print_debug("Hashed Random Number: ");
-        print_hex_debug(output_split, 32);
-        hashed_random_number[i] = uint8_t_to_uint32_t(output_split); // storing hashed random number to be used while booting components
+        print_hex_debug(output_split, 16);
+        if (i == 0)
+            memcpy(hashed_random_number0, output_split, 16*sizeof(uint8_t));
+        else
+            memcpy(hashed_random_number1, output_split, 16*sizeof(uint8_t));
 
         // Create command message
         command_message* command = (command_message*) transmit_buffer;
         command->opcode = COMPONENT_CMD_VALIDATE;
-        // command->params = support_array; // storing puzzle here
         memcpy(command->params, support_array, (MAX_I2C_MESSAGE_LEN-1)*sizeof(uint8_t)); // storing puzzle here
         // Send out command and receive result
+        len_issue_cmd = 255*sizeof(uint8_t);
         int len = issue_cmd(addr, transmit_buffer, receive_buffer);
         if (len == ERROR_RETURN) {
             print_error("Could not validate component\n");
             return ERROR_RETURN;
         }
+        len_issue_cmd = sizeof(uint8_t);
 
         validate_message* validate = (validate_message*) receive_buffer;
 
         //extracting the random number returned by the component
         uint8_t temp_array[16], temp_array1[16]; // temp arrays to assist decryption
         // temp_array = validate->rand_no;
-        print_debug("Encrypted Random Number: ");
+        print_debug("From Component: ");
         print_hex_debug(validate->rand_no, 16);
         temp = decrypt_sym(validate->rand_no, BLOCK_SIZE, key, temp_array1);
         if(temp != 0){
             return ERROR_RETURN;
         }
-        print_debug("Decrypted Random Number: ");
-        print_hex_debug(temp_array1, 32);
+        print_debug("Decrypted From Component: ");
+        print_hex_debug(temp_array1, 16);
         
+        print_debug("Random Number: ");
+        uint32_t rand_number = uint8_t_to_uint32_t(temp_array1);
+        print_debug("%d\n", rand_number);
 
         // uint32_t rand_number = uint8_t_to_uint32_t(temp_array1);//No use??
         // Check that the result is correct
-        if (validate->component_id != flash_status.component_ids[i] || random_number != validate->rand_no) {
+        if (validate->component_id != flash_status.component_ids[i] || random_number != rand_number) {
             print_error("Component ID: 0x%08x invalid\n", flash_status.component_ids[i]);
             return ERROR_RETURN;
         }
@@ -493,15 +496,22 @@ int boot_components() {
         command->opcode = COMPONENT_CMD_BOOT;
 
         uint8_t temp_array[MAX_I2C_MESSAGE_LEN - 1];
-        uint32_t_to_uint8_t(hashed_random_number[i], temp_array);
+        if (i == 0)
+            memcpy(temp_array, hashed_random_number0, 16*sizeof(uint8_t));
+        else
+            memcpy(temp_array, hashed_random_number1, 16*sizeof(uint8_t));
+        print_debug("Hashed Random Number: ");
+        print_hex_debug(temp_array, 16);
         memcpy(command->params, temp_array, (MAX_I2C_MESSAGE_LEN-1)*sizeof(uint8_t)); // storing hashed random number here
         
         // Send out command and receive result
+        len_issue_cmd = 255*sizeof(uint8_t);
         int len = issue_cmd(addr, transmit_buffer, receive_buffer);
         if (len == ERROR_RETURN) {
             print_error("Could not boot component\n");
             return ERROR_RETURN;
         }
+        len_issue_cmd = sizeof(uint8_t);
         // uint8_t recv[16];
         // int len2 = secure_receive(addr, recv);
         // if (len2 != SUCCESS_RETURN) {
