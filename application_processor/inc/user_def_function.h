@@ -9,3 +9,7 @@ int hex_to_int(char hex);
 void int_to_hex(uint32_t num, uint8_t* hex);
 
 int nearest_16_multiple(int num);
+
+void int_to_message(int num, uint8_t *message);
+
+int message_to_int(uint8_t *mesage);

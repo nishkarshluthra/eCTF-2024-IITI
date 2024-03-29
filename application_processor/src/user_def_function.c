@@ -46,3 +46,15 @@ int nearest_16_multiple(int num){
         return num;
     }
 }
+
+void int_to_message(int num, uint8_t *message){
+    uint8_t *num_ptr = &num;
+    for(int i = 0; i < 12; i++) message[i] = 0;
+    for(int i = 0; i < 4; i++) message[12 + i] = num_ptr[i];
+}
+
+int message_to_int(uint8_t *message){
+    int num = 0;
+    uint8_t *num_ptr = &num;
+    for(int i = 0; i < 4; i++) num_ptr[i] = message[12 + i];
+}
