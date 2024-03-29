@@ -119,18 +119,10 @@ uint32_t uint8_t_to_uint32_t(uint8_t *arr){
 uint8_t receive_buffer[MAX_I2C_MESSAGE_LEN];
 uint8_t transmit_buffer[MAX_I2C_MESSAGE_LEN];
 flash_entry flash_status;
-/******************************* POST BOOT FUNCTIONALITY *********************************/
-/**
- * @brief Secure Send 
- * 
- * @param buffer: uint8_t*, pointer to data to be send
- * @param len: uint8_t, size of data to be sent 
- * 
- * Securely send data over I2C. This function is utilized in POST_BOOT functionality.
- * This function must be implemented by your team to align with the security requirements.
-*/
 
+/********************************* USER FUNCTIONS **********************************/
 int hex_to_int(char hex) {
+    // Convert a hex character to an integer
     if (hex >= '0' && hex <= '9') {
         return hex - '0';
     } else if (hex >= 'a' && hex <= 'f') {
@@ -142,12 +134,14 @@ int hex_to_int(char hex) {
 }
 
 void str_to_hex(char* str, uint8_t* hex) {
+    // Convert a string of hex characters to a byte array
     for (int i = 0; i < strlen(str); i += 2) {
         hex[i/2] = (hex_to_int(str[i]) << 4) | hex_to_int(str[i + 1]);
     }
 }
 
 void tell_aes_key(uint8_t addr, uint8_t *buffer){
+    // Generate a key based on the address of the component
     int seed = addr, mult = 103, adder = 31;
     uint8_t key[16];
     str_to_hex(C_KEY, key);
@@ -156,6 +150,46 @@ void tell_aes_key(uint8_t addr, uint8_t *buffer){
         buffer[i] = *((uint8_t*)(key + i*sizeof(uint8_t))) ^ curr;
     }
 }
+
+void int_to_hex(uint32_t num, uint8_t* hex) {
+    // Convert a 32-bit integer to a byte array
+    for (int i = 0; i < 4; i++) {
+        hex[i] = (num >> (8 * i)) & 0xFF;
+    }
+    // Reverse the array
+    for (int i = 0; i < 2; i++) {
+        uint8_t temp = hex[i];
+        hex[i] = hex[3 - i];
+        hex[3 - i] = temp;
+    }
+}
+
+void generate_key(uint8_t *key, uint32_t component_id) {
+    // Generate a key based on the component ID
+    uint8_t component_id_hex[4];
+    int_to_hex(component_id, component_id_hex);
+    for (int i = 0; i < 16; i++) {
+        key[i] = 0;
+    }
+    for (int i = 0; i < 16; i += 1) {
+        key[i] = (hex_to_int(C_KEY[2*i]) << 4) | hex_to_int(C_KEY[(2*i) + 1]);
+    }
+    // Xor key's last four bytes with component_id_hex
+    for (int i = 0; i < 4; i++) {
+        key[12 + i] ^= component_id_hex[i];
+    }
+}
+
+/******************************* POST BOOT FUNCTIONALITY *********************************/
+/**
+ * @brief Secure Send 
+ * 
+ * @param buffer: uint8_t*, pointer to data to be send
+ * @param len: uint8_t, size of data to be sent 
+ * 
+ * Securely send data over I2C. This function is utilized in POST_BOOT functionality.
+ * This function must be implemented by your team to align with the security requirements.
+*/
 
 void secure_send(uint8_t* buffer, uint8_t len) {
     int result;
@@ -180,9 +214,7 @@ void secure_send(uint8_t* buffer, uint8_t len) {
  * Securely receive data over I2C. This function is utilized in POST_BOOT functionality.
  * This function must be implemented by your team to align with the security requirements.
 */
-// int secure_receive(uint8_t* buffer) {
-//     return wait_and_receive_packet(buffer);
-// }
+
 int secure_receive(uint8_t* buffer) {
     int result;
     int len= 16;
@@ -200,33 +232,6 @@ int secure_receive(uint8_t* buffer) {
         return ERROR_RETURN;
     }
     return result;
-}
-
-void int_to_hex(uint32_t num, uint8_t* hex) {
-    for (int i = 0; i < 4; i++) {
-        hex[i] = (num >> (8 * i)) & 0xFF;
-    }
-    // Reverse the array
-    for (int i = 0; i < 2; i++) {
-        uint8_t temp = hex[i];
-        hex[i] = hex[3 - i];
-        hex[3 - i] = temp;
-    }
-}
-
-void generate_key(uint8_t *key, uint32_t component_id) {
-    uint8_t component_id_hex[4];
-    int_to_hex(component_id, component_id_hex);
-    for (int i = 0; i < 16; i++) {
-        key[i] = 0;
-    }
-    for (int i = 0; i < 16; i += 1) {
-        key[i] = (hex_to_int(C_KEY[2*i]) << 4) | hex_to_int(C_KEY[(2*i) + 1]);
-    }
-    // Xor key's last four bytes with component_id_hex
-    for (int i = 0; i < 4; i++) {
-        key[12 + i] ^= component_id_hex[i];
-    }
 }
 
 /******************************* FUNCTION DEFINITIONS *********************************/
@@ -291,7 +296,6 @@ void process_boot(command_message* command) {
     // respond with the boot message
     uint8_t len = strlen(COMPONENT_BOOT_MSG) + 1;
     memcpy((void*)transmit_buffer, COMPONENT_BOOT_MSG, len);
-    // command_message* command = (command_message)* receive_buffer;
 
     uint8_t received_hashed_rand_no[16];
     memcpy(received_hashed_rand_no, command->params, 16*sizeof(uint8_t));
@@ -309,24 +313,7 @@ void process_scan() {
     scan_message* packet = (scan_message*) transmit_buffer;
     packet->component_id = COMPONENT_ID;
     send_packet_and_ack(sizeof(scan_message), transmit_buffer);
-    // secure_send(transmit_buffer, sizeof(scan_message));
 }
-
-// void process_validate() {
-//     // The AP requested a validation. Respond with the Component ID
-//     validate_message* packet = (validate_message*) transmit_buffer;
-//     packet->component_id = COMPONENT_ID;
-//     send_packet_and_ack(sizeof(validate_message), transmit_buffer);
-//     // secure_send(transmit_buffer, sizeof(validate_message));
-// }
-
-// void process_attest() {
-//     // The AP requested attestation. Respond with the attestation data
-//     uint8_t len = sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n",
-//                 ATTESTATION_LOC, ATTESTATION_DATE, ATTESTATION_CUSTOMER) + 1;
-//     send_packet_and_ack(len, transmit_buffer);
-//     // secure_send(transmit_buffer, len);
-// }
 
 void process_validate(command_message* command) {
     //Extract the puzzle 
@@ -345,11 +332,6 @@ void process_validate(command_message* command) {
         return;
     }
     uint32_t temp1 = uint8_t_to_uint32_t(temp_array);
-
-    // validate_message* packet = (validate_message*) transmit_buffer;
-    // packet->component_id = COMPONENT_ID;
-    // memcpy(packet->rand_no, temp_array, 16*sizeof(uint8_t));
-    // send_packet_and_ack(sizeof(validate_message), transmit_buffer);
 
     uint32_t rand_no = temp1 - COMPONENT_ID;
 
@@ -408,7 +390,6 @@ int main(void) {
 
     while (1) {
         wait_and_receive_packet(receive_buffer);
-        // secure_receive(receive_buffer);
         component_process_cmd();
     }
 }
