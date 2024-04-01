@@ -180,6 +180,25 @@ void generate_key(uint8_t *key, uint32_t component_id) {
     }
 }
 
+int nearest_16_multiple(int num){
+    int rem = (num & 15);
+    if(rem){
+        return (num-rem+16);
+    }
+    else{
+        return num;
+    }
+}
+
+void uint8_to_hex(uint8_t num, uint8_t* hex) {
+    hex[0] = (num >> 4) & 0xF;
+    hex[1] = num & 0xF;
+}
+
+uint8_t hex_to_uint8(uint8_t* hex) {
+    return (hex[0] << 4) | hex[1];
+}
+
 /******************************* POST BOOT FUNCTIONALITY *********************************/
 /**
  * @brief Secure Send 
@@ -191,17 +210,52 @@ void generate_key(uint8_t *key, uint32_t component_id) {
  * This function must be implemented by your team to align with the security requirements.
 */
 
-void secure_send(uint8_t* buffer, uint8_t len) {
+void secure_send_single_message(uint8_t* buffer, uint8_t len, uint8_t* aes_key) {
     int result;
-    uint8_t aes_key[16];
-    //get address of the component
-    i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
-    tell_aes_key(address, aes_key);
     uint8_t hashed_buffer[len];
-    do{
-        result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
-    }while(result != SUCCESS_RETURN);
+    result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
     send_packet_and_ack(len, hashed_buffer); 
+}
+
+// void secure_send(uint8_t* buffer, uint8_t len) {
+//     i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
+//     uint8_t aes_key[16];
+//     generate_key(aes_key, address);
+
+//     uint8_t len_hex[16];
+//     for (int i = 0; i < 16; i++) {
+//         len_hex[i] = 0;
+//     }
+//     uint8_to_hex(len, len_hex);
+//     secure_send_single_message(len_hex, 16, aes_key);
+
+//     // Receive ACK
+//     uint8_t ack_packet[1];
+//     wait_and_receive_packet(ack_packet);
+
+//     int msg_len = nearest_16_multiple(len);
+//     secure_send_single_message(buffer, msg_len, aes_key);
+
+//     // Receive ACK
+//     wait_and_receive_packet(ack_packet);
+// }
+
+// void secure_send(uint8_t* buffer, uint8_t len) {
+//     send_packet_and_ack(len, buffer); 
+// }
+
+void secure_send(uint8_t* buffer, uint8_t len) {
+    i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
+    uint8_t aes_key[16];
+    generate_key(aes_key, address);
+
+    uint8_t msg_len = nearest_16_multiple(len);
+    uint8_t hashed_buffer[msg_len];
+    int result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
+    if (result != SUCCESS_RETURN) {
+        return;
+    }
+    send_packet_and_ack(msg_len, hashed_buffer);
 }
 
 /**
@@ -215,18 +269,14 @@ void secure_send(uint8_t* buffer, uint8_t len) {
  * This function must be implemented by your team to align with the security requirements.
 */
 
-int secure_receive(uint8_t* buffer) {
+int secure_receive_with_len(uint8_t* buffer, uint8_t len, uint8_t* aes_key) {
     int result;
-    int len= 16;
     uint8_t hashed_buffer[len];
-    i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
-    // result = poll_and_receive_packet(address, hashed_buffer);
-    result= wait_and_receive_packet(hashed_buffer);
-    if (result < SUCCESS_RETURN) {
+    result = wait_and_receive_packet(hashed_buffer);
+    if (result == ERROR_RETURN) {
         return ERROR_RETURN;
     }
-    uint8_t aes_key[16];
-    tell_aes_key(address, aes_key);
+
     result = decrypt_sym(hashed_buffer, len, aes_key, buffer);
     if (result != SUCCESS_RETURN) {
         return ERROR_RETURN;
@@ -234,13 +284,63 @@ int secure_receive(uint8_t* buffer) {
     return result;
 }
 
+// int secure_receive(uint8_t* buffer) {
+//     i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
+//     uint8_t aes_key[16];
+//     generate_key(aes_key, address);
+
+//     uint8_t len_hex[16];
+//     int result = secure_receive_with_len(len_hex, 16, aes_key);
+//     if (result == ERROR_RETURN) {
+//         return ERROR_RETURN;
+//     }
+
+//     uint8_t ack_packet[1] = {0};
+//     send_packet_and_ack(1, ack_packet);
+
+//     uint8_t len = hex_to_uint8(len_hex);
+//     int msg_len = nearest_16_multiple(len);
+
+//     uint8_t temp_buffer[msg_len];
+//     result = secure_receive_with_len(temp_buffer, msg_len, aes_key);
+//     if (result < SUCCESS_RETURN) {
+//         return ERROR_RETURN;
+//     }
+    
+//     send_packet_and_ack(1, ack_packet);
+//     memcpy(buffer, temp_buffer, len);
+//     return result;
+// }
+
+// int secure_receive(uint8_t* buffer) {
+//     return wait_and_receive_packet(buffer);
+// }
+
+int secure_receive(uint8_t* buffer) {
+    i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
+    uint8_t aes_key[16];
+    generate_key(aes_key, address);
+
+    uint8_t temp_buffer[MAX_I2C_MESSAGE_LEN];
+    int len = wait_and_receive_packet(temp_buffer);
+    if (len == ERROR_RETURN) {
+        return ERROR_RETURN;
+    }
+    
+    uint8_t hashed_buffer[len];
+    int result = decrypt_sym(temp_buffer, len, aes_key, hashed_buffer);
+    if (result != SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    memcpy(buffer, hashed_buffer, len);
+    return len;
+}
+
 /******************************* FUNCTION DEFINITIONS *********************************/
 
 // Example boot sequence
 // Your design does not need to change this
 void boot() {
-    // POST BOOT FUNCTIONALITY
-    // DO NOT REMOVE IN YOUR DESIGN
     #ifdef POST_BOOT
         POST_BOOT
     #else
@@ -300,7 +400,6 @@ void process_boot(command_message* command) {
     uint8_t received_hashed_rand_no[16];
     memcpy(received_hashed_rand_no, command->params, 16*sizeof(uint8_t));
     if(memcmp(received_hashed_rand_no, hashed_rand_number, 16*sizeof(uint8_t)) != 0){
-        printf("ERROR: Hashed rand number does not match\n");
         return;
     }
     send_packet_and_ack(len, transmit_buffer);
@@ -313,6 +412,9 @@ void process_scan() {
     scan_message* packet = (scan_message*) transmit_buffer;
     packet->component_id = COMPONENT_ID;
     send_packet_and_ack(sizeof(scan_message), transmit_buffer);
+    // uint8_t test_secure_send[MAX_I2C_MESSAGE_LEN-1];
+    // wait_and_receive_packet(test_secure_send);
+    // send_packet_and_ack(255, test_secure_send);
 }
 
 void process_validate(command_message* command) {
@@ -350,13 +452,11 @@ void process_validate(command_message* command) {
     temp = encrypt_sym(rand_no_split, BLOCK_SIZE, key, temp_array);
     //again using temp array to to store encrypted rand no.
     if(temp != 0){
-        printf("Error in hashing");
         return;
     }
 
     temp = hash((void*)to_hash, 4, hashed_rand_no_temp);
     if(temp != 0){
-        printf("Error in hashing");
         return;
     }
 
@@ -390,6 +490,12 @@ int main(void) {
 
     while (1) {
         wait_and_receive_packet(receive_buffer);
+        // send_packet_and_ack(len, receive_buffer);
+        // int len= secure_receive(receive_buffer);
+        // if(len == ERROR_RETURN){
+        //     continue;
+        // }
+        // secure_send(receive_buffer, len);
         component_process_cmd();
     }
 }

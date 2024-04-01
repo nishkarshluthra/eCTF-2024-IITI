@@ -17,7 +17,7 @@
 # so we override the BOARD value to hard-set it.
 override BOARD=FTHR_RevA
 MFLOAT_ABI=soft
-
+POST_BOOT_ENABLED=1
 IPATH+=../deployment
 IPATH+=inc/
 VPATH+=src/

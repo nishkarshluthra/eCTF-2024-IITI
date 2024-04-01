@@ -46,3 +46,12 @@ int nearest_16_multiple(int num){
         return num;
     }
 }
+
+void uint8_to_hex(uint8_t num, uint8_t* hex) {
+    hex[0] = (num >> 4) & 0xF;
+    hex[1] = num & 0xF;
+}
+
+uint8_t hex_to_uint8(uint8_t* hex) {
+    return (hex[0] << 4) | hex[1];
+}

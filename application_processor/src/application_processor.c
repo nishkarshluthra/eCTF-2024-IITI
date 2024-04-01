@@ -179,24 +179,63 @@ void tell_aes_key(uint8_t addr, uint8_t *buffer){
     }
 }
 
-int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
-    int result;
-    uint8_t aes_key[16];
-    tell_aes_key(address, aes_key);
-    print_debug("Key :");
-    print_hex_debug(aes_key, 16);
-    uint8_t hashed_buffer[len];
-    result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
-    if (result != SUCCESS_RETURN) {
-        return ERROR_RETURN;
-    }
-    print_debug("Hashed Msg: ");
-    print_hex_debug(hashed_buffer, len);
-    return send_packet(address, len, hashed_buffer);
-}
+// int secure_send_single_message(uint8_t address, uint8_t* buffer, uint8_t len, uint8_t *aes_key) {
+//     int result;
+//     uint8_t hashed_buffer[len];
+//     result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
+//     if (result != SUCCESS_RETURN) {
+//         return ERROR_RETURN;
+//     }
+//     return send_packet(address, len, buffer);
+// }
+
+// int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
+//     int result;
+//     uint8_t aes_key[16];
+//     generate_key(aes_key, address);
+
+//     uint8_t len_hex[16];
+//     for (int i = 0; i < 16; i++) {
+//         len_hex[i] = 0;
+//     }
+//     uint8_to_hex(len, len_hex);
+//     print_debug("About to send len: %d\n", len);
+//     result = secure_send_single_message(address, len_hex, 16, aes_key);
+//     if (result != SUCCESS_RETURN) {
+//         return ERROR_RETURN;
+//     }
+//     // Receive ACK
+//     uint8_t ack_packet[1];
+//     result = poll_and_receive_packet(address, ack_packet);
+//     print_debug("Sent len\n");
+
+//     int msg_len = nearest_16_multiple(len);
+
+//     print_debug("About to send msg");
+//     result = secure_send_single_message(address, buffer, msg_len, aes_key);
+
+//     // Receive ACK
+//     result = poll_and_receive_packet(address, ack_packet);
+//     print_debug("Sent msg\n");
+//     return result;
+// }
+
 // int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
 //     return send_packet(address, len, buffer);
 // }
+
+int secure_send(i2c_addr_t address, uint8_t* buffer, uint8_t len){
+    int result;
+    uint8_t aes_key[16];
+    generate_key(aes_key, address);
+    uint8_t msg_len = nearest_16_multiple(len);
+    uint8_t hashed_buffer[msg_len];
+    result = encrypt_sym(buffer, msg_len, aes_key, hashed_buffer);
+    if (result != SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    return send_packet(address, msg_len, hashed_buffer);
+}
 
 /**
  * @brief Secure Receive
@@ -210,25 +249,84 @@ int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
  * This function must be implemented by your team to align with the security requirements.
 */
 
-int secure_receive(i2c_addr_t address, uint8_t* buffer) {
-    int result;
-    int len =16;
-    uint8_t hashed_buffer[len];
-    result = poll_and_receive_packet(address, hashed_buffer);
-    if (result < SUCCESS_RETURN) {
-        return ERROR_RETURN;
-    }
-    uint8_t aes_key[16];
-    tell_aes_key(address, aes_key);
-    result = decrypt_sym(hashed_buffer, len, &aes_key, buffer);
-    if (result != SUCCESS_RETURN) {
-        return ERROR_RETURN;
-    }
-    return result;
-}
+// int secure_receive_with_len(i2c_addr_t address, uint8_t* buffer, uint8_t len, uint8_t* aes_key){
+//     int result;
+//     uint8_t hashed_buffer[len];
+//     result = poll_and_receive_packet(address, hashed_buffer);
+//     if (result != SUCCESS_RETURN){
+//         return ERROR_RETURN;
+//     }
+//     print_debug("Hashed Buffer: ");
+//     print_hex_debug(hashed_buffer, len);
+
+//     result = decrypt_sym(hashed_buffer, len, &aes_key, buffer);
+//     if (result != SUCCESS_RETURN) {
+//         return ERROR_RETURN;
+//     }
+//     print_debug("Decrypted Buffer: ");
+//     print_hex_debug(buffer, len);
+//     return result;
+// }
+
+// int secure_receive(i2c_addr_t address, uint8_t* buffer) {
+//     uint8_t aes_key[16];
+//     generate_key(aes_key, address);
+    
+//     int result;
+//     uint8_t len_hex[16];
+//     result = secure_receive_with_len(address, len_hex, 16, aes_key);
+//     if (result != SUCCESS_RETURN){
+//         return ERROR_RETURN;
+//     }
+//     // Send ACK
+//     uint8_t ack_packet[1] = {0};
+//     send_packet(address, 1, ack_packet);
+
+//     print_debug("Len Hex: ");
+//     print_hex_debug(len_hex, 16);
+//     uint8_t len = hex_to_uint8(len_hex);
+//     print_debug("Len: %d\n", len);
+//     uint8_t msg_len = nearest_16_multiple(len);
+//     print_debug("Msg Len: %d\n", msg_len);
+
+//     uint8_t temp_buffer[msg_len];
+//     result = secure_receive_with_len(address, temp_buffer, msg_len, aes_key);
+//     if (result != SUCCESS_RETURN){
+//         return ERROR_RETURN;
+//     }
+
+//     // Send ACK
+//     send_packet(address, 1, ack_packet);
+//     print_debug("Temp Buffer: ");
+//     print_hex_debug(temp_buffer, msg_len);
+//     print_debug("Msg: ");
+//     print_debug("%s\n", temp_buffer);
+//     memcpy(buffer, temp_buffer, len);
+//     return result;
+// }
+
 // int secure_receive(i2c_addr_t address, uint8_t* buffer) {
 //     return poll_and_receive_packet(address, buffer);
 // }
+
+int secure_receive(i2c_addr_t address, uint8_t* buffer) {
+    uint8_t aes_key[16];
+    generate_key(aes_key, address);
+    
+    uint8_t temp_buffer[MAX_I2C_MESSAGE_LEN];
+    int len = poll_and_receive_packet(address, temp_buffer);
+    if (len == ERROR_RETURN) {
+        return ERROR_RETURN;
+    }
+
+    uint8_t hashed_buffer[len];
+    int result = decrypt_sym(temp_buffer, len, aes_key, hashed_buffer);
+    if (result != SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    memcpy(buffer, hashed_buffer, len);
+    return len;
+}
 
 /**
  * @brief Get Provisioned IDs
@@ -341,8 +439,22 @@ int scan_components() {
             scan_message* scan = (scan_message*) receive_buffer;
             print_info("F>0x%08x\n", scan->component_id);
         }
+        // const char* message = "Received Command from AP";
+        // secure_send(addr, (uint8_t*)message, strlen(message));
+        // uint8_t test_send_buffer[MAX_I2C_MESSAGE_LEN-1];
+        // secure_receive(addr, (uint8_t*)test_send_buffer);
+        // print_debug("Recieved test buffer send: %s\n", test_send_buffer);
     }
+    // const char* message = "Received Command from AP";
+    //     for (unsigned i = 0; i < flash_status.component_cnt; i++) {
+    //         i2c_addr_t addr = component_id_to_i2c_addr(flash_status.component_ids[i]);
+    //         secure_send(addr, (uint8_t*)message, strlen(message));
+    //         uint8_t test_send_buffer[MAX_I2C_MESSAGE_LEN-1];
+    //         secure_receive(addr, (uint8_t*)test_send_buffer);
+    //         print_debug("Recieved test buffer send: %s\n", test_send_buffer);
+    //     }
     print_success("List\n");
+    
     return SUCCESS_RETURN;
 }
 
@@ -358,8 +470,6 @@ int validate_components() {
         uint32_t puzzle = flash_status.component_ids[i]; // adding the component id
         uint32_t random_number = random_number_generation(); //generating a random number for this component
         puzzle += random_number; // adding the random number
-
-        print_debug("Puzzle: %d\n", puzzle);
 
         uint8_t puzzle_split[16];
         for(int i = 0; i < 16; i++){
@@ -377,9 +487,6 @@ int validate_components() {
             print_error("Cound not encrypt\n");
             return ERROR_RETURN;
         }
-        print_debug("Encrypted Puzzle: ");
-        print_hex_debug(support_array, BLOCK_SIZE);
-
         
         //hashing the random number
         uint8_t input_split[4], output_split[16]; // temporary storage of 4 parts of random number
@@ -390,8 +497,6 @@ int validate_components() {
             return ERROR_RETURN;
         }// if error occured
         //storing hashed random number
-        print_debug("Hashed Random Number: ");
-        print_hex_debug(output_split, 16);
         if (i == 0)
             memcpy(hashed_random_number0, output_split, 16*sizeof(uint8_t));
         else
@@ -414,19 +519,11 @@ int validate_components() {
 
         //extracting the random number returned by the component
         uint8_t temp_array[16], temp_array1[16]; // temp arrays to assist decryption
-        // temp_array = validate->rand_no;
-        print_debug("From Component: ");
-        print_hex_debug(validate->rand_no, 16);
         temp = decrypt_sym(validate->rand_no, BLOCK_SIZE, key, temp_array1);
         if(temp != 0){
             return ERROR_RETURN;
         }
-        print_debug("Decrypted From Component: ");
-        print_hex_debug(temp_array1, 16);
-        
-        print_debug("Random Number: ");
         uint32_t rand_number = uint8_t_to_uint32_t(temp_array1);
-        print_debug("%d\n", rand_number);
 
         // uint32_t rand_number = uint8_t_to_uint32_t(temp_array1);//No use??
         // Check that the result is correct
@@ -457,8 +554,6 @@ int boot_components() {
             memcpy(temp_array, hashed_random_number0, 16*sizeof(uint8_t));
         else
             memcpy(temp_array, hashed_random_number1, 16*sizeof(uint8_t));
-        print_debug("Hashed Random Number: ");
-        print_hex_debug(temp_array, 16);
         memcpy(command->params, temp_array, (MAX_I2C_MESSAGE_LEN-1)*sizeof(uint8_t)); // storing hashed random number here
         
         // Send out command and receive result
@@ -469,6 +564,7 @@ int boot_components() {
             return ERROR_RETURN;
         }
         len_issue_cmd = sizeof(uint8_t);
+
     
         // Print boot message from component
         print_info("0x%08x>%s\n", flash_status.component_ids[i], receive_buffer);
@@ -485,18 +581,11 @@ void decrypt(uint8_t *transmit_buffer, uint32_t component_id) {
     int date_len = strlen(DATE);
     int cust_len = strlen(CUST);
 
-    print_debug("Length of LOC %d\n", loc_len);
-    print_debug("Got LOC\n");
-    print_hex_debug(LOC, 256);
-
     // Convert the strings to hex
     uint8_t hex_loc[loc_len/2], hex_date[date_len/2], hex_cust[cust_len/2];
     str_to_hex(LOC, hex_loc);
     str_to_hex(DATE, hex_date);
     str_to_hex(CUST, hex_cust);
-
-    print_debug("LOC: ");
-    print_hex_debug(hex_loc, loc_len/2);
     
     // Decrypt the strings
     uint8_t decrypt_LOC[256], decrypt_DATE[256], decrypt_CUST[256];
@@ -547,36 +636,6 @@ int attest_component(uint32_t component_id) {
 // YOUR DESIGN MUST NOT CHANGE THIS FUNCTION
 // Boot message is customized through the AP_BOOT_MSG macro
 void boot() {
-    // Example of how to utilize included simple_crypto.h
-    #ifdef CRYPTO_EXAMPLE
-    // This string is 16 bytes long including null terminator
-    // This is the block size of included symmetric encryption
-    char* data = "Crypto Example!";
-    uint8_t ciphertext[BLOCK_SIZE];
-    uint8_t key[KEY_SIZE];
-    
-    // Zero out the key
-    bzero(key, BLOCK_SIZE);
-
-    // Encrypt example data and print out
-    encrypt_sym((uint8_t*)data, BLOCK_SIZE, key, ciphertext); 
-    print_debug("Encrypted data: ");
-    print_hex_debug(ciphertext, BLOCK_SIZE);
-
-    // Hash example encryption results 
-    uint8_t hash_out[HASH_SIZE];
-    hash(ciphertext, BLOCK_SIZE, hash_out);
-
-    // Output hash result
-    print_debug("Hash result: ");
-    print_hex_debug(hash_out, HASH_SIZE);
-    
-    // Decrypt the encrypted message and print out
-    uint8_t decrypted[BLOCK_SIZE];
-    decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
-    print_debug("Decrypted message: %s\r\n", decrypted);
-    #endif
-
     // POST BOOT FUNCTIONALITY
     // DO NOT REMOVE IN YOUR DESIGN
     #ifdef POST_BOOT
@@ -610,11 +669,8 @@ int validate_pin() {
     wc_InitSha256(&sha);
     wc_Sha256Update(&sha, (unsigned char*)buf, strlen(buf));
     wc_Sha256Final(&sha, hash);
-    print_debug("Hash: ");
     char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
     hex_to_str(hash, hash_str, WC_SHA256_DIGEST_SIZE);
-    print_debug(hash_str);
-    print_debug(AP_PIN);
     // Compare hash to AP_PIN
     if (strcmp(hash_str, AP_PIN) == 0) {
         print_debug("Pin Accepted!\n");
@@ -655,11 +711,11 @@ void attempt_boot() {
         print_error("Failed to boot all components\n");
         return;
     }
-    boot();
     // This always needs to be printed when booting
     print_info("AP>%s\n", AP_BOOT_MSG);
     print_success("Boot\n");
     // Boot
+    boot();
 }
 
 // Replace a component if the PIN is correct
@@ -727,16 +783,22 @@ int main() {
     char buf[100];
     while (1) {
         recv_input("Enter Command: ", buf);
+        // const char* message = "Received Command";
+        // for (unsigned i = 0; i < flash_status.component_cnt; i++) {
+        //     i2c_addr_t addr = component_id_to_i2c_addr(flash_status.component_ids[i]);
+        //     secure_send(addr, (uint8_t*)message, (strlen(message)+1));
+        //     uint8_t test_send_buffer[MAX_I2C_MESSAGE_LEN-1];
+        //     secure_receive(addr, (uint8_t*)test_send_buffer);
+        //     print_hex_debug(test_send_buffer, MAX_I2C_MESSAGE_LEN-1);
+        //     print_debug("Recieved test buffer send: %s\n", test_send_buffer);
+        // }
 
+        //secure_send(0x8, (uint8_t*)message, strlen(message));
         // Execute requested command
         if (!strcmp(buf, "list")) {
             scan_components();
         } else if (!strcmp(buf, "boot")) {
-            // Disable global interrupts    
-            __disable_irq();
             attempt_boot();
-            // Enable global interrupts
-            __enable_irq();
         } else if (!strcmp(buf, "replace")) {
             attempt_replace();
         } else if (!strcmp(buf, "attest")) {
