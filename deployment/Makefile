@@ -8,7 +8,6 @@ __check_defined = \
 		$(error Undefined $1))
 
 all:
-	echo "#define SECRET 1234" > global_secrets.h
-	echo '#define C_KEY "8d40b17a2953df92b3196ed62a5c01ea"' > global_secrets.h
+	python3 script.py
 clean:
 	rm -f global_secrets.h
