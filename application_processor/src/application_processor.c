@@ -760,6 +760,7 @@ void attempt_attest() {
     char buf[50];
 
     if (validate_pin()) {
+        print_error("Attestation failed\n");
         return;
     }
     uint32_t component_id;
