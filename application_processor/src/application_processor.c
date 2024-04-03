@@ -768,6 +768,7 @@ void attempt_attest() {
     if (attest_component(component_id) == SUCCESS_RETURN) {
         print_success("Attest\n");
     }
+    print_error("Attestation failed\n");
 }
 
 /*********************************** MAIN *************************************/
