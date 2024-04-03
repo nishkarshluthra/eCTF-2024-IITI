@@ -662,7 +662,7 @@ void boot() {
 
 // Compare the entered PIN to the correct PIN
 int validate_pin() {
-    char buf[50];
+    char buf[6]= {0};
     recv_input("Enter pin: ", buf);
     unsigned char hash[WC_SHA256_DIGEST_SIZE];
     wc_Sha256 sha;
@@ -757,7 +757,7 @@ void attempt_replace() {
 
 // Attest a component if the PIN is correct
 void attempt_attest() {
-    char buf[50];
+    char buf[10]= {0};
 
     if (validate_pin()) {
         print_error("Attestation failed\n");
