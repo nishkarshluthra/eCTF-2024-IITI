@@ -622,7 +622,7 @@ int attest_component(uint32_t component_id) {
         return ERROR_RETURN;
     }
 
-    //decrypt(receive_buffer, component_id);
+    decrypt(receive_buffer, component_id);
 
     // Print out attestation data 
     print_info("C>0x%08x\n", component_id);
@@ -664,15 +664,15 @@ void boot() {
 int validate_pin() {
     char buf[6]= {0};
     recv_input("Enter pin: ", buf);
-    unsigned char hash[WC_SHA256_DIGEST_SIZE];
-    wc_Sha256 sha;
-    wc_InitSha256(&sha);
-    wc_Sha256Update(&sha, (unsigned char*)buf, strlen(buf));
-    wc_Sha256Final(&sha, hash);
-    char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
-    hex_to_str(hash, hash_str, WC_SHA256_DIGEST_SIZE);
+    // unsigned char hash[WC_SHA256_DIGEST_SIZE];
+    // wc_Sha256 sha;
+    // wc_InitSha256(&sha);
+    // wc_Sha256Update(&sha, (unsigned char*)buf, strlen(buf));
+    // wc_Sha256Final(&sha, hash);
+    // char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
+    // hex_to_str(hash, hash_str, WC_SHA256_DIGEST_SIZE);
     // Compare hash to AP_PIN
-    if (strcmp(hash_str, AP_PIN) == 0) {
+    if (strcmp(buf, AP_PIN) == 0) {
         print_debug("Pin Accepted!\n");
         return SUCCESS_RETURN;
     }
@@ -683,16 +683,16 @@ int validate_pin() {
 int validate_token() {
     char buf[50];
     recv_input("Enter token: ", buf);
-    unsigned char hash[WC_SHA256_DIGEST_SIZE];
-    wc_Sha256 sha;
-    wc_InitSha256(&sha);
-    wc_Sha256Update(&sha, (unsigned char*)buf, strlen(buf));
-    wc_Sha256Final(&sha, hash);
+    // unsigned char hash[WC_SHA256_DIGEST_SIZE];
+    // wc_Sha256 sha;
+    // wc_InitSha256(&sha);
+    // wc_Sha256Update(&sha, (unsigned char*)buf, strlen(buf));
+    // wc_Sha256Final(&sha, hash);
+    // // Compare hash to AP_TOKEN
+    // char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
+    // hex_to_str(hash, hash_str, WC_SHA256_DIGEST_SIZE);
     // Compare hash to AP_TOKEN
-    char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
-    hex_to_str(hash, hash_str, WC_SHA256_DIGEST_SIZE);
-    // Compare hash to AP_TOKEN
-    if (strcmp(hash_str, AP_TOKEN) == 0) {
+    if (strcmp(buf, AP_TOKEN) == 0) {
         print_debug("TOKEN Accepted!\n");
         return SUCCESS_RETURN;
     }
