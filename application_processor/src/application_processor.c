@@ -622,7 +622,7 @@ int attest_component(uint32_t component_id) {
         return ERROR_RETURN;
     }
 
-    decrypt(receive_buffer, component_id);
+   //decrypt(receive_buffer, component_id);
 
     // Print out attestation data 
     print_info("C>0x%08x\n", component_id);
