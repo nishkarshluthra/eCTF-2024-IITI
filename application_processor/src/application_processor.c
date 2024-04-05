@@ -765,7 +765,7 @@ void attempt_attest() {
     }
     uint32_t component_id;
     recv_input("Component ID: ", buf);
-    sscanf(buf, "%x", &component_id);
+    component_id = (uint32_t)strtoul(buf, buf + 10, 16);
     if (attest_component(component_id) == SUCCESS_RETURN) {
         print_success("Attest\n");
     }
