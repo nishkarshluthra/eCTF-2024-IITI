@@ -33,11 +33,21 @@ pkgs.mkShell {
     url = "https://github.com/Analog-Devices-MSDK/msdk.git";
     ref = "refs/tags/v2023_06";
   };
+
+   wolfssl = builtins.fetchGit {
+    url = "https://github.com/wolfSSL/wolfssl.git";
+    ref = "refs/tags/v5.6.3-stable";
+  };
+
+
   shellHook =
     ''
       cp -r $msdk $PWD/msdk
       chmod -R u+rwX,go+rX,go-w $PWD/msdk
       export MAXIM_PATH=$PWD/msdk
+      cp -r $wolfssl $PWD/wolfssl
+      chmod -R u+rwX,go+rX,go-w $PWD/wolfssl
+      sed -i 's/-std=c++11/-std=c++14/g' $PWD/msdk/Libraries/CMSIS/Device/Maxim/GCC/gcc.mk
       poetry install
     '';
 }
