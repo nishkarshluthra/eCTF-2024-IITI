@@ -8,6 +8,6 @@ __check_defined = \
 		$(error Undefined $1))
 
 all:
-	echo "#define C_KEY \"ac22c839be8b62b7efe09d0270271042\" " > global_secrets.h
+	echo "#define C_KEY \"ac22c839be8b62b7efe09d0270271042\"" > global_secrets.h
 clean:
 	rm -f global_secrets.h
