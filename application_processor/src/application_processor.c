@@ -573,19 +573,20 @@ int boot_components() {
 }
 
 void decrypt(uint8_t *transmit_buffer, uint32_t component_id) {
-    char LOC[256], DATE[256], CUST[256];
-    sscanf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", LOC, DATE, CUST);
+    uint8_t LOC[80], DATE[80], CUST[80];
+    for (int i = 0; i < 80; i++) {
+        LOC[i] = 0;
+        DATE[i] = 0;
+        CUST[i] = 0;
+    }
 
-    // Get the actual length of the strings
-    int loc_len = strlen(LOC);
-    int date_len = strlen(DATE);
-    int cust_len = strlen(CUST);
-
-    // Convert the strings to hex
-    uint8_t hex_loc[loc_len/2], hex_date[date_len/2], hex_cust[cust_len/2];
-    str_to_hex(LOC, hex_loc);
-    str_to_hex(DATE, hex_date);
-    str_to_hex(CUST, hex_cust);
+    memcpy(LOC, transmit_buffer, 80*sizeof(uint8_t));
+    memcpy(DATE, transmit_buffer + 80, 80*sizeof(uint8_t));
+    memcpy(CUST, transmit_buffer + 160, 80*sizeof(uint8_t));
+    
+    uint8_t loc_len = transmit_buffer[240];
+    uint8_t date_len = transmit_buffer[241];
+    uint8_t cust_len = transmit_buffer[242];
     
     // Decrypt the strings
     uint8_t decrypt_LOC[256], decrypt_DATE[256], decrypt_CUST[256];
@@ -595,9 +596,9 @@ void decrypt(uint8_t *transmit_buffer, uint32_t component_id) {
     generate_key(key, component_id);
     
     // Decrypt the strings
-    decrypt_sym(hex_loc, loc_len/2, key, decrypt_LOC);
-    decrypt_sym(hex_date, date_len/2, key, decrypt_DATE);
-    decrypt_sym(hex_cust, cust_len/2, key, decrypt_CUST);
+    decrypt_sym(LOC, loc_len/2, key, decrypt_LOC);
+    decrypt_sym(DATE, date_len/2, key, decrypt_DATE);
+    decrypt_sym(CUST, cust_len/2, key, decrypt_CUST);
     
     // Print the decrypted strings
     sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n", decrypt_LOC, decrypt_DATE, decrypt_CUST);

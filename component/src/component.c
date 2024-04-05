@@ -469,10 +469,37 @@ void process_validate(command_message* command) {
 }
 
 void process_attest() {
+    uint8_t loc_len = strlen(ATTESTATION_LOC);
+    uint8_t date_len = strlen(ATTESTATION_DATE);
+    uint8_t cust_len = strlen(ATTESTATION_CUSTOMER);
+
+    uint8_t loc[80], date[80], cust[80];
+
+    for (int i = 0; i < 80; i++) {
+        loc[i] = 0;
+        date[i] = 0;
+        cust[i] = 0;
+    }
+
+    str_to_hex(ATTESTATION_LOC, loc);
+    str_to_hex(ATTESTATION_DATE, date);
+    str_to_hex(ATTESTATION_CUSTOMER, cust);
     // The AP requested attestation. Respond with the attestation data
-    uint8_t len = sprintf((char*)transmit_buffer, "LOC>%s\nDATE>%s\nCUST>%s\n",
-                ATTESTATION_LOC, ATTESTATION_DATE, ATTESTATION_CUSTOMER) + 1;
-    send_packet_and_ack(len, transmit_buffer);
+
+    // Fill the first 80 bytes of the transmit buffer with the attestation location
+    memcpy(transmit_buffer, loc, 80*sizeof(uint8_t));
+    // Fill the next 80 bytes of the transmit buffer with the attestation date
+    memcpy(transmit_buffer + 80, date, 80*sizeof(uint8_t));
+    // Fill the next 80 bytes of the transmit buffer with the attestation customer
+    memcpy(transmit_buffer + 160, cust, 80*sizeof(uint8_t));
+    // Fill the next byte with loc_len
+    transmit_buffer[240] = loc_len;
+    // Fill the next byte with date_len
+    transmit_buffer[241] = date_len;
+    // Fill the next byte with cust_len
+    transmit_buffer[242] = cust_len;
+    // Send the transmit buffer
+    send_packet_and_ack(243, transmit_buffer);
 }
 /*********************************** MAIN *************************************/
 

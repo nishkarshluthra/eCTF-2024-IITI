@@ -368,3 +368,4 @@ cython_debug/
 !device/lib
 msdk/
 
+wolfssl

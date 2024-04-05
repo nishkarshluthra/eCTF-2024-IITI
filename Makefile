@@ -5,7 +5,7 @@ build_comp1:
 	ectf_build_comp -d ./ -on comp -od build -id 0x11111124 -b "Component boot 1" -al "McLean" -ad "01/01/24" -ac "Jha"
 
 build_comp2:
-	ectf_build_comp -d ./ -on comp2 -od build -id 0x11111125 -b "Component boot 2" -al "123456789987654321" -ad "02/02/24" -ac "This String has more than 16 characters"
+	ectf_build_comp -d ./ -on comp2 -od build -id 0x11111125 -b "Component boot 2" -al "59e99f6ce91617a2999b4c3eb93777e057d86a7b82baca69eaf943723e640144" -ad "1357bec86dcaab7452d6ffcc3c260fdfbeb0bfabfc342759733211a298f8e5b0" -ac "1357bec86dcaab7452d6ffcc3c260fdfbeb0bfabfc342759733211a298f8e5b0"
 
 update_ap:
 	ectf_update --infile build/ap.img --port $(port)
