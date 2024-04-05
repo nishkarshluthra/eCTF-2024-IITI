@@ -721,7 +721,7 @@ void attempt_boot() {
 
 // Replace a component if the PIN is correct
 void attempt_replace() {
-    char buf[50];
+    char buf[10];
 
     if (validate_token()) {
         return;
@@ -731,9 +731,9 @@ void attempt_replace() {
     uint32_t component_id_out = 0;
 
     recv_input("Component ID In: ", buf);
-    sscanf(buf, "%x", &component_id_in);
+    component_id_in = (uint32_t)strtoul(buf, buf + 10, 16);
     recv_input("Component ID Out: ", buf);
-    sscanf(buf, "%x", &component_id_out);
+    component_id_out = (uint32_t)strtoul(buf, buf + 10, 16);
 
     // Find the component to swap out
     for (unsigned i = 0; i < flash_status.component_cnt; i++) {
