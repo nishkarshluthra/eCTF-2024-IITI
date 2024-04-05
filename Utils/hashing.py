@@ -66,10 +66,10 @@ def edit_component(file_path):
     component_id = ''
     for i in range(len(data)):
         if 'COMPONENT_ID' in data[i]:
-            component_id = data[i].split(' ')[-1]
+            component_id = data[i].split(' ')[-1][2:]
             break
     component_id = component_id.replace('\n', '')
-    component_id = int(component_id)
+    component_id = int(component_id, 16)
     xor = component_id ^ int(aes_key, 16)
     final_key = hex(xor)
     # final_key = final_key[2:]
