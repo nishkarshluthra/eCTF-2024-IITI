@@ -325,7 +325,7 @@ void remove_timeout(uint8_t timeout_type) {
     } else {
         flash_status.timeout_token = 0;
     }
-    rewrite_flash_entry();
+    flash_simple_erase_page(FLASH_ADDR);
 }
 
 void set_timeout(uint8_t timeout_type) {
@@ -334,7 +334,7 @@ void set_timeout(uint8_t timeout_type) {
     } else {
         flash_status.timeout_token = 1;
     }
-    rewrite_flash_entry();
+    flash_simple_write(FLASH_ADDR, (uint32_t*)&flash_status, sizeof(flash_entry));
 }
 
 
