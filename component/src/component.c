@@ -1,7 +1,7 @@
 /**
  * @file component.c
- * @author Jacob Doll 
- * @brief eCTF Component Example Design Implementation
+ * @author Jacob Doll + IIT Indore
+ * @brief eCTF Component IITI Design Implementation
  * @date 2024
  *
  * This source file is part of an example system for MITRE's 2024 Embedded System CTF (eCTF).
@@ -140,17 +140,6 @@ void str_to_hex(char* str, uint8_t* hex) {
     }
 }
 
-void tell_aes_key(uint8_t addr, uint8_t *buffer){
-    // Generate a key based on the address of the component
-    int seed = addr, mult = 103, adder = 31;
-    uint8_t key[16];
-    str_to_hex(C_KEY, key);
-    for(int i = 0; i < 16; i++){
-        uint8_t curr = ((seed = seed * mult + adder) & 255);
-        buffer[i] = *((uint8_t*)(key + i*sizeof(uint8_t))) ^ curr;
-    }
-}
-
 void int_to_hex(uint32_t num, uint8_t* hex) {
     // Convert a 32-bit integer to a byte array
     for (int i = 0; i < 4; i++) {
@@ -205,40 +194,6 @@ uint8_t hex_to_uint8(uint8_t* hex) {
  * This function must be implemented by your team to align with the security requirements.
 */
 
-void secure_send_single_message(uint8_t* buffer, uint8_t len, uint8_t* aes_key) {
-    int result;
-    uint8_t hashed_buffer[len];
-    result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
-    send_packet_and_ack(len, hashed_buffer); 
-}
-
-// void secure_send(uint8_t* buffer, uint8_t len) {
-//     i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
-//     uint8_t aes_key[16];
-//     generate_key(aes_key, address);
-
-//     uint8_t len_hex[16];
-//     for (int i = 0; i < 16; i++) {
-//         len_hex[i] = 0;
-//     }
-//     uint8_to_hex(len, len_hex);
-//     secure_send_single_message(len_hex, 16, aes_key);
-
-//     // Receive ACK
-//     uint8_t ack_packet[1];
-//     wait_and_receive_packet(ack_packet);
-
-//     int msg_len = nearest_16_multiple(len);
-//     secure_send_single_message(buffer, msg_len, aes_key);
-
-//     // Receive ACK
-//     wait_and_receive_packet(ack_packet);
-// }
-
-// void secure_send(uint8_t* buffer, uint8_t len) {
-//     send_packet_and_ack(len, buffer); 
-// }
-
 void secure_send(uint8_t* buffer, uint8_t len) {
     i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
     uint8_t aes_key[16];
@@ -282,53 +237,6 @@ void secure_send(uint8_t* buffer, uint8_t len) {
  * Securely receive data over I2C. This function is utilized in POST_BOOT functionality.
  * This function must be implemented by your team to align with the security requirements.
 */
-
-int secure_receive_with_len(uint8_t* buffer, uint8_t len, uint8_t* aes_key) {
-    int result;
-    uint8_t hashed_buffer[len];
-    result = wait_and_receive_packet(hashed_buffer);
-    if (result == ERROR_RETURN) {
-        return ERROR_RETURN;
-    }
-
-    result = decrypt_sym(hashed_buffer, len, aes_key, buffer);
-    if (result != SUCCESS_RETURN) {
-        return ERROR_RETURN;
-    }
-    return result;
-}
-
-// int secure_receive(uint8_t* buffer) {
-//     i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
-//     uint8_t aes_key[16];
-//     generate_key(aes_key, address);
-
-//     uint8_t len_hex[16];
-//     int result = secure_receive_with_len(len_hex, 16, aes_key);
-//     if (result == ERROR_RETURN) {
-//         return ERROR_RETURN;
-//     }
-
-//     uint8_t ack_packet[1] = {0};
-//     send_packet_and_ack(1, ack_packet);
-
-//     uint8_t len = hex_to_uint8(len_hex);
-//     int msg_len = nearest_16_multiple(len);
-
-//     uint8_t temp_buffer[msg_len];
-//     result = secure_receive_with_len(temp_buffer, msg_len, aes_key);
-//     if (result < SUCCESS_RETURN) {
-//         return ERROR_RETURN;
-//     }
-    
-//     send_packet_and_ack(1, ack_packet);
-//     memcpy(buffer, temp_buffer, len);
-//     return result;
-// }
-
-// int secure_receive(uint8_t* buffer) {
-//     return wait_and_receive_packet(buffer);
-// }
 
 int secure_receive(uint8_t* buffer) {
     i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
@@ -433,9 +341,6 @@ void process_scan() {
     scan_message* packet = (scan_message*) transmit_buffer;
     packet->component_id = COMPONENT_ID;
     send_packet_and_ack(sizeof(scan_message), transmit_buffer);
-    // uint8_t test_secure_send[MAX_I2C_MESSAGE_LEN-1];
-    // wait_and_receive_packet(test_secure_send);
-    // send_packet_and_ack(255, test_secure_send);
 }
 
 void process_validate(command_message* command) {
@@ -538,12 +443,6 @@ int main(void) {
 
     while (1) {
         wait_and_receive_packet(receive_buffer);
-        // send_packet_and_ack(len, receive_buffer);
-        // int len= secure_receive(receive_buffer);
-        // if(len == ERROR_RETURN){
-        //     continue;
-        // }
-        // secure_send(receive_buffer, len);
         component_process_cmd();
     }
 }

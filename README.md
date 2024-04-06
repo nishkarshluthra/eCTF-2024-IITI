@@ -1,4 +1,4 @@
-# eCTF Insecure Example
+# eCTF IITI Submission
 This repository holds the insecure example design for an eCTF MISC system.
 
 
