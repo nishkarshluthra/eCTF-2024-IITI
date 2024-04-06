@@ -39,12 +39,7 @@ int hex_to_int(char hex) {
 
 int nearest_16_multiple(int num){
     int rem = (num & 15);
-    if(rem){
-        return (num-rem+16);
-    }
-    else{
-        return num;
-    }
+    return (num-rem+16);
 }
 
 void uint8_to_hex(uint8_t num, uint8_t* hex) {

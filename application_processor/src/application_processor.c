@@ -220,22 +220,46 @@ void tell_aes_key(uint8_t addr, uint8_t *buffer){
 //     return result;
 // }
 
-int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
-    return send_packet(address, len, buffer);
-}
-
-// int secure_send(i2c_addr_t address, uint8_t* buffer, uint8_t len){
-//     int result;
-//     uint8_t aes_key[16];
-//     generate_key(aes_key, address);
-//     uint8_t msg_len = nearest_16_multiple(len);
-//     uint8_t hashed_buffer[msg_len];
-//     result = encrypt_sym(buffer, msg_len, aes_key, hashed_buffer);
-//     if (result != SUCCESS_RETURN) {
-//         return ERROR_RETURN;
-//     }
-//     return send_packet(address, msg_len, hashed_buffer);
+// int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
+//     return send_packet(address, len, buffer);
 // }
+
+int secure_send(i2c_addr_t address, uint8_t* buffer, uint8_t len){
+    int result;
+    uint8_t aes_key[16];
+    generate_key(aes_key, address);
+
+    uint8_t padded_msg_len = nearest_16_multiple(len);
+    if ((len & 15)==0) {
+        padded_msg_len = len;
+    }
+
+    uint8_t padded_buffer[padded_msg_len];
+    for (int i = 0; i < padded_msg_len; i++) {
+        padded_buffer[i] = 0;
+    }
+    memcpy(padded_buffer, buffer, len);
+
+    uint8_t msg_len = nearest_16_multiple(len);
+    uint8_t hashed_buffer[msg_len];
+
+    result = encrypt_sym(padded_buffer, padded_msg_len, aes_key, hashed_buffer);
+    if (result != SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+
+    uint8_t buffer_to_send[MAX_I2C_MESSAGE_LEN-1] = {0};
+    buffer_to_send[0] = len;
+    buffer_to_send[1] = padded_msg_len;
+    buffer_to_send[2] = msg_len;
+    memcpy(buffer_to_send+3, hashed_buffer, msg_len);
+
+    result = send_packet(address, MAX_I2C_MESSAGE_LEN-1, buffer_to_send);
+    if (result != SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    return result;
+}
 
 /**
  * @brief Secure Receive
@@ -305,28 +329,35 @@ int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
 //     return result;
 // }
 
-int secure_receive(i2c_addr_t address, uint8_t* buffer) {
-    return poll_and_receive_packet(address, buffer);
-}
-
 // int secure_receive(i2c_addr_t address, uint8_t* buffer) {
-//     uint8_t aes_key[16];
-//     generate_key(aes_key, address);
-    
-//     uint8_t temp_buffer[MAX_I2C_MESSAGE_LEN];
-//     int len = poll_and_receive_packet(address, temp_buffer);
-//     if (len == ERROR_RETURN) {
-//         return ERROR_RETURN;
-//     }
-
-//     uint8_t hashed_buffer[len];
-//     int result = decrypt_sym(temp_buffer, len, aes_key, hashed_buffer);
-//     if (result != SUCCESS_RETURN) {
-//         return ERROR_RETURN;
-//     }
-//     memcpy(buffer, hashed_buffer, len);
-//     return len;
+//     return poll_and_receive_packet(address, buffer);
 // }
+
+int secure_receive(i2c_addr_t address, uint8_t* buffer) {
+    uint8_t aes_key[16];
+    generate_key(aes_key, address);
+    
+    uint8_t temp_buffer[MAX_I2C_MESSAGE_LEN-1];
+    int rcv_len = poll_and_receive_packet(address, temp_buffer);
+    if (rcv_len == ERROR_RETURN) {
+        return ERROR_RETURN;
+    }
+
+    uint8_t len = temp_buffer[0];
+    uint8_t padded_msg_len = temp_buffer[1];
+    uint8_t msg_len = temp_buffer[2];
+    uint8_t hashed_buffer[msg_len];
+    memcpy(hashed_buffer, temp_buffer + 3, msg_len*sizeof(uint8_t));
+
+    uint8_t decrypted_buffer[padded_msg_len];
+
+    int result = decrypt_sym(hashed_buffer, msg_len, aes_key, decrypted_buffer);
+    if (result != SUCCESS_RETURN) {
+        return ERROR_RETURN;
+    }
+    memcpy(buffer, decrypted_buffer, len);
+    return len;
+}
 
 /**
  * @brief Get Provisioned IDs
