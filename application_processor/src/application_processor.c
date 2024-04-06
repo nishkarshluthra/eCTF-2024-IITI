@@ -1,7 +1,7 @@
 /**
  * @file application_processor.c
- * @author Jacob Doll
- * @brief eCTF AP Example Design Implementation
+ * @author Jacob Doll + IIT Indore
+ * @brief eCTF AP IITI Design Implementation
  * @date 2024
  *
  * This source file is part of an example system for MITRE's 2024 Embedded System CTF (eCTF).
@@ -95,6 +95,8 @@ typedef struct {
 // Datatype for information stored in flash
 typedef struct {
     uint32_t flash_magic;
+    uint8_t timeout_pin;
+    uint8_t timeout_token;
     uint32_t component_cnt;
     uint32_t component_ids[32];
 } flash_entry;
@@ -169,61 +171,6 @@ uint32_t random_number_generation(){
  * This function must be implemented by your team to align with the security requirements.
 */
 
-void tell_aes_key(uint8_t addr, uint8_t *buffer){
-    int seed = addr, mult = 103, adder = 31;
-    uint8_t key[16];
-    str_to_hex(C_KEY, key);
-    for(int i = 0; i < 16; i++){
-        uint8_t curr = ((seed = seed * mult + adder) & 255);
-        buffer[i] = *((uint8_t*)(key + i*sizeof(uint8_t))) ^ curr;
-    }
-}
-
-// int secure_send_single_message(uint8_t address, uint8_t* buffer, uint8_t len, uint8_t *aes_key) {
-//     int result;
-//     uint8_t hashed_buffer[len];
-//     result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
-//     if (result != SUCCESS_RETURN) {
-//         return ERROR_RETURN;
-//     }
-//     return send_packet(address, len, buffer);
-// }
-
-// int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
-//     int result;
-//     uint8_t aes_key[16];
-//     generate_key(aes_key, address);
-
-//     uint8_t len_hex[16];
-//     for (int i = 0; i < 16; i++) {
-//         len_hex[i] = 0;
-//     }
-//     uint8_to_hex(len, len_hex);
-//     print_debug("About to send len: %d\n", len);
-//     result = secure_send_single_message(address, len_hex, 16, aes_key);
-//     if (result != SUCCESS_RETURN) {
-//         return ERROR_RETURN;
-//     }
-//     // Receive ACK
-//     uint8_t ack_packet[1];
-//     result = poll_and_receive_packet(address, ack_packet);
-//     print_debug("Sent len\n");
-
-//     int msg_len = nearest_16_multiple(len);
-
-//     print_debug("About to send msg");
-//     result = secure_send_single_message(address, buffer, msg_len, aes_key);
-
-//     // Receive ACK
-//     result = poll_and_receive_packet(address, ack_packet);
-//     print_debug("Sent msg\n");
-//     return result;
-// }
-
-// int secure_send(uint8_t address, uint8_t* buffer, uint8_t len) {
-//     return send_packet(address, len, buffer);
-// }
-
 int secure_send(i2c_addr_t address, uint8_t* buffer, uint8_t len){
     int result;
     uint8_t aes_key[16];
@@ -272,66 +219,6 @@ int secure_send(i2c_addr_t address, uint8_t* buffer, uint8_t len){
  * Securely receive data over I2C. This function is utilized in POST_BOOT functionality.
  * This function must be implemented by your team to align with the security requirements.
 */
-
-// int secure_receive_with_len(i2c_addr_t address, uint8_t* buffer, uint8_t len, uint8_t* aes_key){
-//     int result;
-//     uint8_t hashed_buffer[len];
-//     result = poll_and_receive_packet(address, hashed_buffer);
-//     if (result != SUCCESS_RETURN){
-//         return ERROR_RETURN;
-//     }
-//     print_debug("Hashed Buffer: ");
-//     print_hex_debug(hashed_buffer, len);
-
-//     result = decrypt_sym(hashed_buffer, len, &aes_key, buffer);
-//     if (result != SUCCESS_RETURN) {
-//         return ERROR_RETURN;
-//     }
-//     print_debug("Decrypted Buffer: ");
-//     print_hex_debug(buffer, len);
-//     return result;
-// }
-
-// int secure_receive(i2c_addr_t address, uint8_t* buffer) {
-//     uint8_t aes_key[16];
-//     generate_key(aes_key, address);
-    
-//     int result;
-//     uint8_t len_hex[16];
-//     result = secure_receive_with_len(address, len_hex, 16, aes_key);
-//     if (result != SUCCESS_RETURN){
-//         return ERROR_RETURN;
-//     }
-//     // Send ACK
-//     uint8_t ack_packet[1] = {0};
-//     send_packet(address, 1, ack_packet);
-
-//     print_debug("Len Hex: ");
-//     print_hex_debug(len_hex, 16);
-//     uint8_t len = hex_to_uint8(len_hex);
-//     print_debug("Len: %d\n", len);
-//     uint8_t msg_len = nearest_16_multiple(len);
-//     print_debug("Msg Len: %d\n", msg_len);
-
-//     uint8_t temp_buffer[msg_len];
-//     result = secure_receive_with_len(address, temp_buffer, msg_len, aes_key);
-//     if (result != SUCCESS_RETURN){
-//         return ERROR_RETURN;
-//     }
-
-//     // Send ACK
-//     send_packet(address, 1, ack_packet);
-//     print_debug("Temp Buffer: ");
-//     print_hex_debug(temp_buffer, msg_len);
-//     print_debug("Msg: ");
-//     print_debug("%s\n", temp_buffer);
-//     memcpy(buffer, temp_buffer, len);
-//     return result;
-// }
-
-// int secure_receive(i2c_addr_t address, uint8_t* buffer) {
-//     return poll_and_receive_packet(address, buffer);
-// }
 
 int secure_receive(i2c_addr_t address, uint8_t* buffer) {
     uint8_t aes_key[16];
@@ -410,6 +297,8 @@ void init() {
         print_debug("First boot, setting flash!\n");
 
         flash_status.flash_magic = FLASH_MAGIC;
+        flash_status.timeout_pin = 0;
+        flash_status.timeout_token = 0;
         flash_status.component_cnt = COMPONENT_CNT;
         uint32_t component_ids[COMPONENT_CNT] = {COMPONENT_IDS};
         memcpy(flash_status.component_ids, component_ids, 
@@ -421,6 +310,33 @@ void init() {
     // Initialize board link interface
     board_link_init();
 }
+
+bool get_timeout(uint8_t timeout_type) {
+    if (timeout_type == 0) {
+        return flash_status.timeout_pin != 0;
+    } else {
+        return flash_status.timeout_token != 0;
+    }
+}
+
+void remove_timeout(uint8_t timeout_type) {
+    if (timeout_type == 0) {
+        flash_status.timeout_pin = 0;
+    } else {
+        flash_status.timeout_token = 0;
+    }
+    rewrite_flash_entry();
+}
+
+void set_timeout(uint8_t timeout_type) {
+    if (timeout_type == 0) {
+        flash_status.timeout_pin = 1;
+    } else {
+        flash_status.timeout_token = 1;
+    }
+    rewrite_flash_entry();
+}
+
 
 // Send a command to a component and receive the result
 int issue_cmd(i2c_addr_t addr, uint8_t* transmit, uint8_t* receive) {
@@ -470,20 +386,7 @@ int scan_components() {
             scan_message* scan = (scan_message*) receive_buffer;
             print_info("F>0x%08x\n", scan->component_id);
         }
-        // const char* message = "Received Command from AP";
-        // secure_send(addr, (uint8_t*)message, strlen(message));
-        // uint8_t test_send_buffer[MAX_I2C_MESSAGE_LEN-1];
-        // secure_receive(addr, (uint8_t*)test_send_buffer);
-        // print_debug("Recieved test buffer send: %s\n", test_send_buffer);
     }
-    // const char* message = "Received Command from AP";
-    //     for (unsigned i = 0; i < flash_status.component_cnt; i++) {
-    //         i2c_addr_t addr = component_id_to_i2c_addr(flash_status.component_ids[i]);
-    //         secure_send(addr, (uint8_t*)message, strlen(message));
-    //         uint8_t test_send_buffer[MAX_I2C_MESSAGE_LEN-1];
-    //         secure_receive(addr, (uint8_t*)test_send_buffer);
-    //         print_debug("Recieved test buffer send: %s\n", test_send_buffer);
-    //     }
     print_success("List\n");
     
     return SUCCESS_RETURN;
@@ -555,8 +458,6 @@ int validate_components() {
             return ERROR_RETURN;
         }
         uint32_t rand_number = uint8_t_to_uint32_t(temp_array1);
-
-        // uint32_t rand_number = uint8_t_to_uint32_t(temp_array1);//No use??
         // Check that the result is correct
         if (validate->component_id != flash_status.component_ids[i] || random_number != rand_number) {
             print_error("Component ID: 0x%08x invalid\n", flash_status.component_ids[i]);
@@ -703,12 +604,19 @@ int validate_pin() {
     wc_Sha256Final(&sha, hash);
     char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
     hex_to_str(hash, hash_str, WC_SHA256_DIGEST_SIZE);
+
+    if (get_timeout(0)) {
+        MXC_Delay(3000000);
+    }
+
     // Compare hash to AP_PIN
     if (strcmp(hash_str, AP_PIN) == 0) {
         print_debug("Pin Accepted!\n");
+        remove_timeout(0);
         return SUCCESS_RETURN;
     }
     print_error("Invalid PIN!\n");
+    set_timeout(0);
     return ERROR_RETURN;
 }
 
@@ -723,12 +631,19 @@ int validate_token() {
     // Compare hash to AP_TOKEN
     char hash_str[WC_SHA256_DIGEST_SIZE * 2 + 1];
     hex_to_str(hash, hash_str, WC_SHA256_DIGEST_SIZE);
+
+    if (get_timeout(1)) {
+        MXC_Delay(3000000);
+    }
+
     // Compare hash to AP_TOKEN
     if (strcmp(hash_str, AP_TOKEN) == 0) {
         print_debug("TOKEN Accepted!\n");
+        remove_timeout(1);
         return SUCCESS_RETURN;
     }
     print_error("Invalid TOKEN!\n");
+    set_timeout(1);
     return ERROR_RETURN;
 }
 
@@ -817,17 +732,6 @@ int main() {
     char buf[100];
     while (1) {
         recv_input("Enter Command: ", buf);
-        // const char* message = "Received Command";
-        // for (unsigned i = 0; i < flash_status.component_cnt; i++) {
-        //     i2c_addr_t addr = component_id_to_i2c_addr(flash_status.component_ids[i]);
-        //     secure_send(addr, (uint8_t*)message, (strlen(message)+1));
-        //     uint8_t test_send_buffer[MAX_I2C_MESSAGE_LEN-1];
-        //     secure_receive(addr, (uint8_t*)test_send_buffer);
-        //     print_hex_debug(test_send_buffer, MAX_I2C_MESSAGE_LEN-1);
-        //     print_debug("Recieved test buffer send: %s\n", test_send_buffer);
-        // }
-
-        //secure_send(0x8, (uint8_t*)message, strlen(message));
         // Execute requested command
         if (!strcmp(buf, "list")) {
             scan_components();
