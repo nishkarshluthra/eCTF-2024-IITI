@@ -240,23 +240,23 @@ void secure_send_single_message(uint8_t* buffer, uint8_t len, uint8_t* aes_key) 
 //     wait_and_receive_packet(ack_packet);
 // }
 
-// void secure_send(uint8_t* buffer, uint8_t len) {
-//     send_packet_and_ack(len, buffer); 
-// }
-
 void secure_send(uint8_t* buffer, uint8_t len) {
-    i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
-    uint8_t aes_key[16];
-    generate_key(aes_key, address);
-
-    uint8_t msg_len = nearest_16_multiple(len);
-    uint8_t hashed_buffer[msg_len];
-    int result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
-    if (result != SUCCESS_RETURN) {
-        return;
-    }
-    send_packet_and_ack(msg_len, hashed_buffer);
+    send_packet_and_ack(len, buffer); 
 }
+
+// void secure_send(uint8_t* buffer, uint8_t len) {
+//     i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
+//     uint8_t aes_key[16];
+//     generate_key(aes_key, address);
+
+//     uint8_t msg_len = nearest_16_multiple(len);
+//     uint8_t hashed_buffer[msg_len];
+//     int result = encrypt_sym(buffer, len, aes_key, hashed_buffer);
+//     if (result != SUCCESS_RETURN) {
+//         return;
+//     }
+//     send_packet_and_ack(msg_len, hashed_buffer);
+// }
 
 /**
  * @brief Secure Receive
@@ -312,29 +312,29 @@ int secure_receive_with_len(uint8_t* buffer, uint8_t len, uint8_t* aes_key) {
 //     return result;
 // }
 
-// int secure_receive(uint8_t* buffer) {
-//     return wait_and_receive_packet(buffer);
-// }
-
 int secure_receive(uint8_t* buffer) {
-    i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
-    uint8_t aes_key[16];
-    generate_key(aes_key, address);
-
-    uint8_t temp_buffer[MAX_I2C_MESSAGE_LEN];
-    int len = wait_and_receive_packet(temp_buffer);
-    if (len == ERROR_RETURN) {
-        return ERROR_RETURN;
-    }
-    
-    uint8_t hashed_buffer[len];
-    int result = decrypt_sym(temp_buffer, len, aes_key, hashed_buffer);
-    if (result != SUCCESS_RETURN) {
-        return ERROR_RETURN;
-    }
-    memcpy(buffer, hashed_buffer, len);
-    return len;
+    return wait_and_receive_packet(buffer);
 }
+
+// int secure_receive(uint8_t* buffer) {
+//     i2c_addr_t address = component_id_to_i2c_addr(COMPONENT_ID);
+//     uint8_t aes_key[16];
+//     generate_key(aes_key, address);
+
+//     uint8_t temp_buffer[MAX_I2C_MESSAGE_LEN];
+//     int len = wait_and_receive_packet(temp_buffer);
+//     if (len == ERROR_RETURN) {
+//         return ERROR_RETURN;
+//     }
+    
+//     uint8_t hashed_buffer[len];
+//     int result = decrypt_sym(temp_buffer, len, aes_key, hashed_buffer);
+//     if (result != SUCCESS_RETURN) {
+//         return ERROR_RETURN;
+//     }
+//     memcpy(buffer, hashed_buffer, len);
+//     return len;
+// }
 
 /******************************* FUNCTION DEFINITIONS *********************************/
 

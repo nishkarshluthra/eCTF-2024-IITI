@@ -70,6 +70,7 @@ def edit_component(file_path):
             break
     component_id = component_id.replace('\n', '')
     component_id = int(component_id, 16)
+    # component_id = int(component_id)
     xor = component_id ^ int(aes_key, 16)
     final_key = hex(xor)
     # final_key = final_key[2:]
